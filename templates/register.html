@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% load widget_tweaks %}
+{% block content %}
+<div class="d-flex justify-content-center align-items-center" style="min-height: 80vh;">
+  <div class="card shadow" style="width: 400px;">
+    <div class="card-body">
+      <h3 class="card-title text-center mb-4">Регистрация</h3>
+      <form method="post">
+        {% csrf_token %}
+        <div class="mb-3">
+          {% render_field form.email placeholder="Email" class="form-control" %}
+        </div>
+        <div class="mb-3">
+          {% render_field form.first_name placeholder="Имя" class="form-control" %}
+        </div>
+        <div class="mb-3">
+          {% render_field form.patronymic placeholder="Отчество" class="form-control" %}
+        </div>
+        <div class="mb-3">
+          {% render_field form.last_name placeholder="Фамилия" class="form-control" %}
+        </div>
+        <div class="mb-3">
+          {% render_field form.password1 placeholder="Пароль" class="form-control" %}
+        </div>
+        <div class="mb-3">
+          {% render_field form.password2 placeholder="Повторите пароль" class="form-control" %}
+        </div>
+        <button type="submit" class="btn btn-success w-100">Зарегистрироваться</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

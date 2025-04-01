@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block content %}
+<p class="fs-1">Переименовать файл</p>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit" class="btn btn-primary">Сохранить новое имя</button>
+</form>
+{% endblock %}

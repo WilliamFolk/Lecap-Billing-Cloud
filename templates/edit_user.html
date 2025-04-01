@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% load widget_tweaks %}
+
+{% block content %}
+<div class="d-flex justify-content-center align-items-center" style="min-height: 80vh;">
+  <div class="card shadow" style="width: 400px;">
+    <div class="card-body">
+      <h3 class="card-title text-center mb-4 fs-4">
+        Редактирование пользователя {{ form.instance.email }}
+      </h3>
+
+      <form method="post">
+        {% csrf_token %}
+
+        <div class="mb-3">
+          {% render_field form.email placeholder="Email" class="form-control" %}
+        </div>
+        <div class="mb-3">
+          {% render_field form.first_name placeholder="Имя" class="form-control" %}
+        </div>
+        <div class="mb-3">
+          {% render_field form.patronymic placeholder="Отчество" class="form-control" %}
+        </div>
+        <div class="mb-3">
+          {% render_field form.last_name placeholder="Фамилия" class="form-control" %}
+        </div>
+
+        <div class="form-check mb-3">
+          {% render_field form.is_staff class="form-check-input" id="is_staff" %}
+          <label class="form-check-label" for="is_staff">
+            Администратор
+          </label>
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100 mb-2">Сохранить</button>
+        <a href="{% url 'custom_administration' %}" class="btn btn-secondary w-100">Отмена</a>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

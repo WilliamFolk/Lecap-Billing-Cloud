@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block content %}
+<p class="fs-1">Подготовка отчёта</p>
+<form method="post" id="reportForm">
+  {% csrf_token %}
+  <!-- Выбор проекта -->
+  <div class="mb-3">
+    <label for="project" class="form-label">Выберите проект:</label>
+    <select name="project" id="project" class="form-select">
+      <option value="">-- Выберите проект --</option>
+      {% for project in projects %}
+        {% if project.has_rates %}
+          <option value="{{ project.id }}">{{ project.title }}</option>
+        {% else %}
+          <option value="{{ project.id }}" disabled class="text-muted" title="У проекта нет назначенных ставок">
+            {{ project.title }} (не указаны ставки)
+          </option>
+        {% endif %}
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- Выбор временного периода -->
+  <div class="mb-3 d-flex align-items-center">
+    <label for="start_date" class="form-label me-3 text-start" style="width: 120px;">Начальная дата</label>
+    <div style="width: 130px;">
+      <input type="date" name="start_date" id="start_date" class="form-control" value="{{ today }}">
+    </div>
+  </div>
+  
+  <div class="mb-3 d-flex align-items-center">
+    <label for="end_date" class="form-label me-3 text-start" style="width: 120px;">Конечная дата</label>
+    <div class="d-flex align-items-center" style="width: 130px;">
+      <input type="date" name="end_date" id="end_date" class="form-control me-2" value="{{ today }}">
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="setTodayButton">Сегодня</button>
+    </div>
+  </div>
+  
+  <!-- Блок для вывода ошибки, если даты заданы неправильно -->
+  <div class="mb-3">
+    <span id="dateError" class="text-danger"></span>
+  </div>
+
+  <!-- Выбор шаблона -->
+  <div class="mb-3">
+    <label for="template" class="form-label">Выберите шаблон:</label>
+    <select name="template" id="template" class="form-select">
+      <option value="">-- Выберите шаблон --</option>
+      {% for tmpl in templates %}
+        <option value="{{ tmpl.id }}">{{ tmpl.file.name|cut:"docxTemplate/savedFiles/"|slice:":-5" }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <button type="submit" class="btn btn-primary" id="prepareReportButton" disabled>Подготовить отчёт</button>
+</form>
+
+<script>
+  // Функция проверки заполненности формы и корректности дат
+  function checkFormValidity() {
+    const projectSelect = document.getElementById('project');
+    const startDateInput = document.getElementById('start_date');
+    const endDateInput = document.getElementById('end_date');
+    const templateSelect = document.getElementById('template');
+    const button = document.getElementById('prepareReportButton');
+    const dateError = document.getElementById('dateError');
+    let valid = true;
+    
+    // Сброс сообщения об ошибке
+    dateError.textContent = '';
+
+    // Проверка заполненность всех обязательных полей
+    if (!projectSelect.value || !startDateInput.value || !endDateInput.value || !templateSelect.value) {
+      valid = false;
+    }
+    
+    // Проверка корректность диапазона дат
+    if (startDateInput.value && endDateInput.value) {
+      const start = new Date(startDateInput.value);
+      const end = new Date(endDateInput.value);
+      if (start > end) {
+        dateError.textContent = "Начальная дата не может быть позже конечной.";
+        valid = false;
+      }
+    }
+    
+    // Если выбранный проект отключён, форма отмечается недействительной
+    if (projectSelect.value) {
+      const selectedOption = projectSelect.options[projectSelect.selectedIndex];
+      if (selectedOption.disabled) {
+        valid = false;
+      }
+    }
+    
+    button.disabled = !valid;
+  }
+
+  document.getElementById('project').addEventListener('change', checkFormValidity);
+  document.getElementById('start_date').addEventListener('input', checkFormValidity);
+  document.getElementById('end_date').addEventListener('input', checkFormValidity);
+  document.getElementById('template').addEventListener('change', checkFormValidity);
+
+  // Кнопка установки текущей даты для поля "Конечная дата"
+  document.getElementById('setTodayButton').addEventListener('click', function() {
+    const today = "{{ today }}";
+    document.getElementById('end_date').value = today;
+    checkFormValidity();
+  });
+
+  document.addEventListener('DOMContentLoaded', checkFormValidity);
+</script>
+{% endblock %}

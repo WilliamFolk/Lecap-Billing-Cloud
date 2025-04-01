@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% load widget_tweaks %}
+{% block content %}
+<head>
+  <style>
+      body{
+        margin-bottom: 100px;
+      }
+    </style>
+</head>
+<p class="fs-1">Ставки по проектам</p>
+  <form method="get" action="{% url 'rates' %}" id="project_select_form">
+    <div class="mb-3">
+      <label for="project_id" class="form-label">Выберите проект:</label>
+      <select name="project_id" id="project_id" class="form-select">
+        {% for project in projects %}
+          <option value="{{ project.id }}"
+            {% if project.id|stringformat:"s" == selected_project_id %}selected{% endif %}>
+            {{ project.title }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+  </form>
+
+  {% if selected_project_id %}
+  <p class="fs-3">Ставки для проекта "{{ selected_project_title }}"</p>
+    <form method="post" action="{% url 'rates' %}?project_id={{ selected_project_id }}&project_title={{ selected_project_title|urlencode }}">
+
+      {% csrf_token %}
+      {{ rates_formset.management_form }}
+      <table class="table table-bordered">
+        <thead>
+          <tr>
+            <th>Роль</th>
+            <th>Почасовая ставка</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for form in rates_formset %}
+            <tr>
+              <td>{{ form.instance.role_name }}</td>
+              <td>
+                {{ form.id }}
+                <div class="input-group" style="width: 220px;">
+                  {% render_field form.rate class="form-control" placeholder="Введите ставку" %}
+                  <span class="input-group-text bg-white text-muted" style="pointer-events: none;">руб</span>
+                </div>
+                <!--<input type="number" step="0.01" name="{{ form.rate.name }}" value="{{ form.rate.value|floatformat:'-2' }}" class="form-control" />-->
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <button type="submit" class="btn btn-success" style ="width: 220px" name="save_rates">Сохранить ставки</button>
+    </form>
+  {% endif %}
+
+  <!-- Автоматическая отправка формы при изменении выбора проекта -->
+  <script>
+    document.getElementById('project_id').addEventListener('change', function() {
+      document.getElementById('project_select_form').submit();
+    });
+  </script>
+{% endblock %}

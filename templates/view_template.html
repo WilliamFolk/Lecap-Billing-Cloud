@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block content %}
+<head>
+    <style>
+        body{
+          margin-bottom: 70px;
+        }
+      </style>
+</head>
+{% load widget_tweaks %}
+<p class="fs-1">Содержимое файла: {{ template.file.name|cut:"docxTemplate/savedFiles/"|slice:":-5" }}</p>
+
+<pre style="
+  background: #f8f8f8;
+  padding: 20px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: 8px;
+  font-family: monospace;
+">
+{{ content }}
+</pre>
+<div class="form-group" style="text-align: center">
+    <a href="{% url 'docxTemplate:templates' %}" class="btn btn-secondary"  style="width: 220px;">Вернуться</a>
+  </div>
+{% endblock %}

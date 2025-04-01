@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block content %}
+<p class="fs-1">Удаление пользователя</p>
+<p class="fs-6">Вы действительно хотите удалить пользователя {{ user.email }}?</p>
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger">Да, удалить</button>
+    <a href="{% url 'custom_administration' %}" class="btn btn-secondary">Отмена</a>
+</form>
+{% endblock %}

@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% load extras %}
+{% block content %}
+<p class="fs-1">Шаблоны</p>
+
+<!-- Область Drag & Drop -->
+<div id="drop-area" style="border: 2px dashed #ccc; padding: 20px; height: 125px; 
+        display: flex; justify-content: center; align-items: center; margin-bottom: 20px;">
+    <h5 style="font-family: Arial, sans-serif; margin: 0;">
+        <em>Перетащите файл сюда или кликните для выбора</em>
+      </h5>
+  <input type="file" id="fileElem" accept=".docx" style="display:none;">
+</div>
+
+<!-- Форма загрузки: скрытый input для файла -->
+<form id="uploadForm" method="post" enctype="multipart/form-data" action="{% url 'docxTemplate:templates' %}">
+    {% csrf_token %}
+    <input type="file" name="file" id="hiddenFileInput" style="display:none;">
+</form>
+
+<hr>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+    <p class="fs-2" style="margin: 0;">Сохраненные шаблоны</p>
+    <p style="margin: 0; color: #6c757d;">Файлы: {{ templates|length }} / 100</p>
+  </div>  
+<table class="table table-bordered">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Имя файла</th>
+            <th>Дата загрузки</th>
+            <th>Действия</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for template in templates %}
+        <tr>
+            <td>{{ template.id }}</td>
+            <td>{{ template.file.name|basename|slice:":-5" }}</td>
+            <td>{{ template.uploaded_at }}</td>
+            <td>
+                <a href="{% url 'docxTemplate:delete_template' template.id %}" class="btn btn-danger">Удалить</a>
+                <a href="{% url 'docxTemplate:rename_template' template.id %}" class="btn btn-secondary">Переименовать</a>
+                <a href="{% url 'docxTemplate:view_template' template.id %}" class="btn btn-info">Просмотреть</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<script>
+// Drag & Drop логика
+let dropArea = document.getElementById('drop-area');
+let fileInput = document.getElementById('fileElem');
+let hiddenFileInput = document.getElementById('hiddenFileInput');
+let uploadForm = document.getElementById('uploadForm');
+
+dropArea.addEventListener('click', () => {
+    fileInput.click();
+});
+fileInput.addEventListener('change', () => {
+    if(fileInput.files.length > 0) {
+        hiddenFileInput.files = fileInput.files;
+        uploadForm.submit();
+    }
+});
+dropArea.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropArea.style.borderColor = '#000';
+});
+dropArea.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dropArea.style.borderColor = '#ccc';
+});
+dropArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropArea.style.borderColor = '#ccc';
+    let files = e.dataTransfer.files;
+    if (files.length) {
+        hiddenFileInput.files = files;
+        uploadForm.submit();
+    }
+});
+</script>
+{% endblock %}
