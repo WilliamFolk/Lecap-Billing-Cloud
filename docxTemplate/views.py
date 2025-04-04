@@ -33,11 +33,26 @@ def insert_paragraph_after_table(table, text):
     return new_para
 
 def convert_number_to_text(amount):
+    def morph(n, form1, form2, form5):
+        n = abs(n) % 100
+        if 11 <= n <= 19:
+            return form5
+        n = n % 10
+        if n == 1:
+            return form1
+        if 2 <= n <= 4:
+            return form2
+        return form5
+
     rubles = int(amount)
     kopeks = round((amount - rubles) * 100)
     rubles_text = num2words(rubles, lang='ru')
     kopeks_text = num2words(kopeks, lang='ru') if kopeks else "ноль"
-    return f"{rubles_text.capitalize()} рублей {kopeks_text} копеек"
+    
+    rubles_declension = morph(rubles, "рубль", "рубля", "рублей")
+    kopeks_declension = morph(kopeks, "копейка", "копейки", "копеек")
+    
+    return f"{rubles_text.capitalize()} {rubles_declension} {kopeks_text} {kopeks_declension}"
 
 def set_table_borders(table):
     tbl = table._tbl
