@@ -18,6 +18,7 @@ from docxTemplate.views import insert_table_after, set_table_borders, insert_par
 from django.forms import ModelForm, HiddenInput
 from .models import ProjectRate
 from .forms import DefaultRoleRateFormSet
+from docx.shared import Inches
 
 User = get_user_model()
 
@@ -288,7 +289,8 @@ def generate_report(request, project, template_instance, start_date, end_date):
                     role_name = pr.role_name
                 except ProjectRate.DoesNotExist:
                     rate = 0
-                    role_name = "Не задана ставка"
+                    # role_name = "Не задана ставка" 
+                    role_name = "Emplyoee (Нулевая ставка)"
 
                 amount = rate * hours
                 total_amount += amount
@@ -357,11 +359,15 @@ def generate_report(request, project, template_instance, start_date, end_date):
                 row_cells = table.add_row().cells
                 row_cells[0].text = row["date"]
                 row_cells[1].text = row["specialist"]
+                row_cells[1].width = Inches(1.5)
                 row_cells[2].text = row["position"]
                 row_cells[3].text = row["rate"]
                 row_cells[4].text = row["work"]
+                row_cells[4].width = Inches(3) # Расширяю столбец "Содержание работ"
                 row_cells[5].text = row["hours"]
                 row_cells[6].text = row["cost"]
+                row_cells[6].width = Inches(1.5)
+                
             table_placeholder_found = True
             break
 
