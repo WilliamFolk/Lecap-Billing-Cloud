@@ -1,0 +1,13 @@
+version: '3'
+
+services:
+  web:
+    build: .
+    command: sh -c "python manage.py migrate && gunicorn LecapProject.wsgi:application --bind 0.0.0.0:8000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - DEBUG=False
+      - SECRET_KEY="django-insecure-7-=c&xq%sv4nox#4)u_(w@z%zhk8$m09*l7xn##-%%b645ous2"

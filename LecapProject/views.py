@@ -120,18 +120,17 @@ def save_rates(request, rates_formset, project_id, project_title):
     Если все поля заполнены, сохраняет formset и возвращает redirect с сообщением об успехе.
     Если хотя бы одно поле не заполнено или форма не валидна – возвращает redirect с сообщением об ошибке.
     """
-    print('Rates are: ', rates_formset)
     if rates_formset.is_valid():
         all_filled = all(form.cleaned_data.get('rate') not in (None, '') for form in rates_formset)
         if all_filled:
-            #print('saved: ', all_filled)
+            # print('saved: ', all_filled)
             rates_formset.save()
             messages.success(request, "Ставки для проекта сохранены.")
         else:
             
             messages.error(request, "Заполните ставки для всех ролей перед сохранением.", )
     else:
-        print("Ошибки formset:", rates_formset.errors)
+        # print("Ошибки formset:", rates_formset.errors)
         messages.error(request, "Проверьте введённые данные.")
 
     # Перенаправляет пользователя обратно на страницу ставок с сохранением выбранного проекта
@@ -192,7 +191,7 @@ def custom_administration(request):
                 messages.success(request, "Стандартные ставки сохранены.")
                 return redirect('custom_administration')
             else:
-                print('Ставки: ', default_rate_formset)
+                # print('Ставки: ', default_rate_formset)
                 messages.error(request, "Проверьте введённые данные в стандартных ставках.")
 
     
@@ -263,18 +262,18 @@ def generate_report(request, project, template_instance, start_date, end_date):
     table_rows = []
     total_time = 0.0
     total_amount = 0.0
-    print(f"Получено карточек: {len(cards)}")
+    # print(f"Получено карточек: {len(cards)}")
     for card in cards:
         card_id = card.get("id")
         card_title = card.get("title")
         time_logs = fetch_kaiten_time_logs(domain, bearer_key, card_id)
         for log in time_logs:
             created_value = log.get("created", "")
-            print(f"Лог карточки: {created_value}")
-            print(f"Лог карточки: {log}")
-            print("Установленные даты:", start_date, end_date)
+            # print(f"Лог карточки: {created_value}")
+            # print(f"Лог карточки: {log}")
+            # print("Установленные даты:", start_date, end_date)
             log_date_iso = created_value[:10]
-            print(f"Обработка лога: {created_value} -> {log_date_iso}")
+            # print(f"Обработка лога: {created_value} -> {log_date_iso}")
             if start_date <= log_date_iso <= end_date:
                 try:
                     minutes = float(log.get("time_spent", 0))
