@@ -9,5 +9,6 @@ services:
     volumes:
       - .:/app
     environment:
-      - DEBUG=False
-      - SECRET_KEY="django-insecure-7-=c&xq%sv4nox#4)u_(w@z%zhk8$m09*l7xn##-%%b645ous2"
+      DEBUG: "False"
+      SECRET_KEY: "django-insecure-7-=c&xq%sv4nox#4)u_(w@z%zhk8$m09*l7xn##-%%b645ous2"
+    restart: always
