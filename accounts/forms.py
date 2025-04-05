@@ -16,6 +16,7 @@ class AdminSettingsForm(forms.ModelForm):
         ]
 
 class CustomUserForm(forms.ModelForm):
+    password = forms.CharField(widget=forms.PasswordInput, required=False, label="Пароль")
     class Meta:
         model = User
         fields = ['email', 'first_name', 'patronymic', 'last_name', 'is_staff'] #'is_superuser'

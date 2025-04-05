@@ -180,7 +180,12 @@ def custom_administration(request):
             user_form = CustomUserForm(request.POST)
             if user_form.is_valid():
                 new_user = user_form.save(commit=False)
-                new_user.set_password("defaultpassword")
+                # password = user_form.cleaned_data.get('password')
+                password = user_form.cleaned_data.get('password')
+                if password:
+                    new_user.set_password(password)
+                else:
+                    new_user.set_password("defaultpassword")
                 new_user.save()
                 messages.success(request, "Пользователь успешно создан.")
                 return redirect('custom_administration')
