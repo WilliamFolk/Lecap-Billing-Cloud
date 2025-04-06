@@ -47,7 +47,7 @@ def convert_number_to_text(amount):
     rubles = int(amount)
     kopeks = round((amount - rubles) * 100)
     rubles_text = num2words(rubles, lang='ru')
-    kopeks_text = num2words(kopeks, lang='ru') if kopeks else "ноль"
+    kopeks_text = num2words(kopeks, lang='ru', gender='feminine') if kopeks else "ноль"
     
     rubles_declension = morph(rubles, "рубль", "рубля", "рублей")
     kopeks_declension = morph(kopeks, "копейка", "копейки", "копеек")
