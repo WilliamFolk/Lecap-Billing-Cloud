@@ -29,6 +29,7 @@ urlpatterns = [
     path('administration/', views.administration_view, name='administration'),
     path('rates/', views.rates_view, name='rates'),
     path('dashboard/', TemplateView.as_view(template_name='dashboard.html'), name='dashboard'),
+    path('get_boards/', views.get_boards, name='get_boards'),
     path('home/', home_view, name='home'),
     path('', home_view, name='home'),
 ]

@@ -36,6 +36,7 @@ LOGGING = {
             'when': 'D',
             'interval': 1,
             'backupCount': 7,
+            'delay': True,  # Добавлено, чтобы попытаться избежать блокировки файла? 
             'formatter': 'verbose',
             'encoding': 'utf-8',
         },
@@ -56,7 +57,7 @@ LOGGING = {
 # SECRET_KEY = 'django-insecure-7-=c&xq%sv4nox#4)u_(w@z%zhk8$m09*l7xn##-%%b645ous2'
 SECRET_KEY = os.environ.get('SECRET_KEY', 'fallback-secret-key')
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False # Hurray!
+DEBUG = True # Hurray!
 
 ALLOWED_HOSTS = ['*']
 

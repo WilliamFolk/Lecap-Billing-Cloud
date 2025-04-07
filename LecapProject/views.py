@@ -4,14 +4,15 @@ from django.contrib.auth import get_user_model
 from django.contrib import messages
 from django.shortcuts import render, redirect
 from django.conf import settings
+from django import forms
 from accounts.models import AdminSettings
 from .models import  ProjectRate, DefaultRoleRate
 from accounts.forms import AdminSettingsForm, CustomUserForm
-from LecapProject.kaiten_api import fetch_kaiten_roles, fetch_kaiten_projects, fetch_kaiten_cards, fetch_kaiten_time_logs
+from LecapProject.kaiten_api import fetch_kaiten_roles, fetch_kaiten_projects, fetch_kaiten_cards, fetch_kaiten_time_logs, fetch_kaiten_boards
 from django.forms import modelformset_factory, ModelForm, HiddenInput
 from datetime import datetime
 import pytz
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from docx import Document
 from docxTemplate.models import TemplateFile
 from docxTemplate.views import insert_table_after, set_table_borders, insert_paragraph_after_table, convert_number_to_text
@@ -19,6 +20,9 @@ from django.forms import ModelForm, HiddenInput
 from .models import ProjectRate
 from .forms import DefaultRoleRateFormSet
 from docx.shared import Inches
+from django.db.models.functions import Cast
+from django.db.models import CharField
+from urllib.parse import urlencode
 
 User = get_user_model()
 
@@ -35,25 +39,38 @@ def administration_view(request):
     return render(request, 'custom_admin_users.html')
 
 @login_required
+def get_boards(request):
+    space_id = request.GET.get('space_id')
+    for_report = request.GET.get('for_report') == "1"
+    admin_settings, _ = AdminSettings.objects.get_or_create(pk=1)
+    domain = admin_settings.url_domain_value_id
+    bearer_key = admin_settings.api_auth_key
+    boards = fetch_kaiten_boards(domain, bearer_key, space_id)
+    if for_report:
+        # Проверка для каждой доски: есть ли ставки для выбранного проекта (space_id) и этой доски
+        for board in boards:
+            rate_exists = ProjectRate.objects.filter(
+                project_id=space_id,
+                board_id=board.get('id')
+            ).exclude(rate__isnull=True).exclude(rate="").exists()
+            board["has_rates"] = rate_exists
+    return JsonResponse({"boards": boards})
+
+
+@login_required
 def rates_view(request):
     admin_settings, _ = AdminSettings.objects.get_or_create(pk=1)
     domain = admin_settings.url_domain_value_id
     bearer_key = admin_settings.api_auth_key
 
-    # Получение список проектов из API (сохранение в сессии, чтобы не запрашивать повторно), может сильно снизить 
-    # нагрузку на Kaiten, но тогда не прогрузятся новые проекты
-    """ projects = request.session.get('projects')
-    if not projects:
-        projects = fetch_kaiten_projects(domain, bearer_key)
-        request.session['projects'] = projects
-        valid_project_ids = [str(project['id']) for project in projects]
-        # Удаляет все ProjectRate, которые относятся к несуществующим проектам
-        ProjectRate.objects.exclude(project_id__in=valid_project_ids).delete() """
     projects = fetch_kaiten_projects(domain, bearer_key)
 
-    # Определяет выбранный проект: если GET-параметры не заданы, выбирает первый проект
+    # Получение параметров из GET
     project_id = request.GET.get('project_id')
     project_title = request.GET.get('project_title', '')
+    board_id = request.GET.get('board_id')
+    board_title = request.GET.get('board_title', '')
+    
     if project_id and not project_title:
         for project in projects:
             if str(project['id']) == str(project_id):
@@ -62,28 +79,39 @@ def rates_view(request):
     if not project_id and projects:
         project_id = str(projects[0]['id'])
         project_title = projects[0]['title']
+    
+    # Получение списка досок выбранного проекта
+    boards = []
+    if project_id:
+        boards = fetch_kaiten_boards(domain, bearer_key, project_id)
+        if boards and not board_id:
+            board_id = boards[0]['id']
+            board_title = boards[0]['title']
 
-    # Определяет formset для редактирования ставок (только поле rate)
+    # Формирование formset для ставок (фильтр теперь по проекту и доске)
     ProjectRateFormSet = modelformset_factory(ProjectRate, form=ProjectRateForm, extra=0)
     rates_formset = None
 
-    if project_id:
+    if project_id and board_id:
         roles = fetch_kaiten_roles(domain, bearer_key)
         current_role_ids = [str(role.get('id')) for role in roles]
-        # Удаляет старые записи, которых нет в новом списке ролей
-        ProjectRate.objects.filter(project_id=project_id).exclude(role_id__in=current_role_ids).delete()
+        # Удаление записей, для которых больше не актуальна роль, с учётом доски
+        ProjectRate.objects.filter(project_id=project_id, board_id=board_id)\
+            .exclude(role_id__in=current_role_ids).delete()
         
         for role in roles:
             pr, created = ProjectRate.objects.get_or_create(
                 project_id=project_id,
+                board_id=board_id,
                 role_id=str(role.get('id')),
                 defaults={
                     'project_title': project_title,
+                    'board_title': board_title,
                     'role_name': role.get('name'),
                     'rate': None
                 }
             )
-            # Если ставка пустая, пробует подставить дефолтное значение, если оно задано
+            # Если ставка пустая, пытается установить дефолтное значение (по роли)
             if pr.rate is None:
                 try:
                     dr = DefaultRoleRate.objects.get(role_id=str(role.get('id')))
@@ -92,29 +120,45 @@ def rates_view(request):
                         pr.save()
                 except DefaultRoleRate.DoesNotExist:
                     pass
-        rates_formset = ProjectRateFormSet(queryset=ProjectRate.objects.filter(project_id=project_id))
+        rates_formset = ProjectRateFormSet(queryset=ProjectRate.objects.filter(project_id=project_id, board_id=board_id))
 
     if request.method == "POST":
-        rates_formset = ProjectRateFormSet(request.POST, queryset=ProjectRate.objects.filter(project_id=project_id))
-        return save_rates(request, rates_formset, project_id, project_title)
+        rates_formset = ProjectRateFormSet(request.POST, queryset=ProjectRate.objects.filter(project_id=project_id, board_id=board_id))
+        return save_rates(request, rates_formset, project_id, project_title, board_id, board_title)
+
 
     context = {
         'rates_formset': rates_formset,
         'projects': projects,
+        'boards': boards,
         'selected_project_id': project_id,
         'selected_project_title': project_title,
+        'selected_board_id': board_id,
+        'selected_board_title': board_title,
     }
     return render(request, 'rates.html', context)
 
-class ProjectRateForm(ModelForm):
+
+
+class ProjectRateForm(forms.ModelForm):
+    rate = forms.IntegerField(required=False, widget=forms.NumberInput(), label="Почасовая ставка")
+    
     class Meta:
         model = ProjectRate
-        fields = ('id', 'rate')
+        fields = ('id', 'rate', 'project_id', 'board_id')
         widgets = {
             'id': HiddenInput(),
+            'project_id': HiddenInput(),
+            'board_id': HiddenInput(),
         }
+    
+    def clean_rate(self):
+        data = self.cleaned_data.get('rate')
+        if data == '':
+            return None
+        return data
 
-def save_rates(request, rates_formset, project_id, project_title):
+def save_rates(request, rates_formset, project_id, project_title, board_id, board_title):
     """
     Проверяет и сохраняет ставки для проекта.
     Если все поля заполнены, сохраняет formset и возвращает redirect с сообщением об успехе.
@@ -123,18 +167,22 @@ def save_rates(request, rates_formset, project_id, project_title):
     if rates_formset.is_valid():
         all_filled = all(form.cleaned_data.get('rate') not in (None, '') for form in rates_formset)
         if all_filled:
-            # print('saved: ', all_filled)
             rates_formset.save()
             messages.success(request, "Ставки для проекта сохранены.")
         else:
-            
-            messages.error(request, "Заполните ставки для всех ролей перед сохранением.", )
+            messages.error(request, "Заполните ставки для всех ролей перед сохранением.")
     else:
-        # print("Ошибки formset:", rates_formset.errors)
         messages.error(request, "Проверьте введённые данные.")
 
-    # Перенаправляет пользователя обратно на страницу ставок с сохранением выбранного проекта
-    return redirect(f"/rates/?project_id={project_id}&project_title={project_title}")
+    params = {
+        'project_id': project_id,
+        'project_title': project_title,
+        'board_id': board_id,
+        'board_title': board_title,
+    }
+    return redirect(f"/rates/?{urlencode(params)}")
+
+
 
 def replace_placeholder_in_paragraph(paragraph, placeholder, replacement):
     if placeholder in paragraph.text:
@@ -215,25 +263,34 @@ def reports_view(request):
     bearer_key = admin_settings.api_auth_key
 
     projects = fetch_kaiten_projects(domain, bearer_key)
-    roles = fetch_kaiten_roles(domain, bearer_key)
-    api_role_ids = set(str(role.get('id')) for role in roles)
+    # Проверка для каждого проекта: есть ли хотя бы одна доска с указанными ставками
     for project in projects:
         project_id = str(project.get('id'))
-        rates = ProjectRate.objects.filter(project_id=project_id)
-        filled_rate_ids = set(str(rate.role_id) for rate in rates if rate.rate not in (None, ''))
-        project['has_rates'] = (filled_rate_ids == api_role_ids)
+        boards = fetch_kaiten_boards(domain, bearer_key, project_id)
+        board_has_rate = False
+        for board in boards:
+            if ProjectRate.objects.annotate(rate_str=Cast('rate', CharField())).filter(
+                    project_id=project_id,
+                    board_id=board.get('id')
+                ).exclude(rate_str__isnull=True).exclude(rate_str="").exists():
+                board_has_rate = True
+                break
+        project['has_rates'] = board_has_rate
 
     moscow_tz = pytz.timezone("Europe/Moscow")
     today = datetime.now(moscow_tz).date().strftime("%Y-%m-%d")
 
     if request.method == "POST":
         project_id = request.POST.get('project')
+        board_id = request.POST.get('board')
         template_id = request.POST.get('template')
         start_date = request.POST.get('start_date')
         end_date = request.POST.get('end_date')
         selected_project = next((p for p in projects if str(p.get('id')) == project_id), None)
         if not selected_project or not selected_project.get('has_rates'):
-            messages.error(request, "Выбран некорректный проект или для проекта не заданы все ставки.")
+            messages.error(request, "Выбран некорректный проект или для проекта не заданы ставки ни для одной доски.")
+        elif not board_id:
+            messages.error(request, "Выберите доску.")
         elif not template_id:
             messages.error(request, "Выберите шаблон.")
         elif not start_date or not end_date:
@@ -244,16 +301,17 @@ def reports_view(request):
             except TemplateFile.DoesNotExist:
                 messages.error(request, "Выбран некорректный шаблон.")
                 return redirect('reports')
-            return generate_report(request, selected_project, template_instance, start_date, end_date)
+            return generate_report(request, selected_project, template_instance, start_date, end_date, board_id)
 
     context = {
         'projects': projects,
-        'templates': TemplateFile.objects.all(),
         'today': today,
+        'templates': TemplateFile.objects.all(),
     }
     return render(request, 'reports.html', context)
 
-def generate_report(request, project, template_instance, start_date, end_date):
+
+def generate_report(request, project, template_instance, start_date, end_date, board_id):
     admin_settings, _ = AdminSettings.objects.get_or_create(pk=1)
     domain = admin_settings.url_domain_value_id
     bearer_key = admin_settings.api_auth_key
@@ -267,18 +325,12 @@ def generate_report(request, project, template_instance, start_date, end_date):
     table_rows = []
     total_time = 0.0
     total_amount = 0.0
-    # print(f"Получено карточек: {len(cards)}")
     for card in cards:
         card_id = card.get("id")
         card_title = card.get("title")
         time_logs = fetch_kaiten_time_logs(domain, bearer_key, card_id)
         for log in time_logs:
-            created_value = log.get("created", "")
-            # print(f"Лог карточки: {created_value}")
-            # print(f"Лог карточки: {log}")
-            # print("Установленные даты:", start_date, end_date)
-            log_date_iso = created_value[:10]
-            # print(f"Обработка лога: {created_value} -> {log_date_iso}")
+            log_date_iso = log.get("created", "")[:10]
             if start_date <= log_date_iso <= end_date:
                 try:
                     minutes = float(log.get("time_spent", 0))
@@ -288,12 +340,15 @@ def generate_report(request, project, template_instance, start_date, end_date):
                 total_time += hours
 
                 try:
-                    pr = ProjectRate.objects.get(project_id=project_id, role_id=str(log.get("role_id")))
+                    pr = ProjectRate.objects.get(
+                        project_id=project_id,
+                        board_id=board_id,
+                        role_id=str(log.get("role_id"))
+                    )
                     rate = pr.rate if pr.rate is not None else 0
                     role_name = pr.role_name
                 except ProjectRate.DoesNotExist:
                     rate = 0
-                    # role_name = "Не задана ставка" 
                     role_name = "Emplyoee (Нулевая ставка)"
 
                 amount = rate * hours
@@ -311,7 +366,7 @@ def generate_report(request, project, template_instance, start_date, end_date):
                 
                 table_rows.append({
                     "date": formatted_date,
-                    "specialist": log.get("author", {}).get("full_name", "Неизвестно"), # По требованиям нужен author, а не user?
+                    "specialist": log.get("author", {}).get("full_name", "Неизвестно"),
                     "position": role_name,
                     "rate": formatted_rate,
                     "work": log.get("comment") or card_title,
@@ -320,23 +375,19 @@ def generate_report(request, project, template_instance, start_date, end_date):
                 })
 
     if not table_rows:
-        from django.contrib import messages
         messages.error(request, "Записей по времени в выбранном периоде в проекте не найдено")
         return redirect('reports')
 
-    # Формат итоговых значений
     total_time_placeholder = f"{total_time:.2f} ч"
     total_amount_placeholder = f"{total_amount:.2f}".replace('.', ',') + " ₽ (" + convert_number_to_text(total_amount) + ")"
 
-
     # Работа с шаблоном документа
     doc = Document(template_instance.file.path)
-
     for para in doc.paragraphs:
         replace_placeholder_in_paragraph(para, "{total_time_spent}", total_time_placeholder)
         replace_placeholder_in_paragraph(para, "{total_amount_spent}", total_amount_placeholder)
-
-    # Обработка тега {table}
+    
+    # Поиск и замена тега {table} в документе
     table_placeholder_found = False
     for para in doc.paragraphs:
         if "{table}" in para.text:
@@ -367,11 +418,10 @@ def generate_report(request, project, template_instance, start_date, end_date):
                 row_cells[2].text = row["position"]
                 row_cells[3].text = row["rate"]
                 row_cells[4].text = row["work"]
-                row_cells[4].width = Inches(3) # Расширяю столбец "Содержание работ"
+                row_cells[4].width = Inches(3)
                 row_cells[5].text = row["hours"]
                 row_cells[6].text = row["cost"]
                 row_cells[6].width = Inches(1.5)
-                
             table_placeholder_found = True
             break
 
@@ -385,6 +435,5 @@ def generate_report(request, project, template_instance, start_date, end_date):
     )
     moscow_tz = pytz.timezone("Europe/Moscow")
     today = datetime.now(moscow_tz).date().strftime("%Y-%m-%d")
-    #response['Content-Disposition'] = f'attachment; filename="report_{project_id}_{start_date}_to_{end_date}.docx"'
     response['Content-Disposition'] = f'attachment; filename="report_{project_id}_{today}.docx"'
     return response

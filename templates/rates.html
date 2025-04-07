@@ -3,12 +3,13 @@
 {% block content %}
 <head>
   <style>
-      body{
+      body {
         margin-bottom: 100px;
       }
-    </style>
+  </style>
 </head>
 <p class="fs-1">Ставки по проектам</p>
+  <!-- Форма для выбора проекта и доски -->
   <form method="get" action="{% url 'rates' %}" id="project_select_form">
     <div class="mb-3">
       <label for="project_id" class="form-label">Выберите проект:</label>
@@ -21,12 +22,27 @@
         {% endfor %}
       </select>
     </div>
+    <div class="mb-3">
+      <label for="board_id" class="form-label">Выберите доску:</label>
+      <select name="board_id" id="board_id" class="form-select">
+        {% if boards %}
+          {% for board in boards %}
+            <option value="{{ board.id }}"
+              {% if board.id|stringformat:"s" == selected_board_id %}selected{% endif %}>
+              {{ board.title }}
+            </option>
+          {% endfor %}
+        {% else %}
+          <option value="">-- Нет досок --</option>
+        {% endif %}
+      </select>
+    </div>
   </form>
 
   {% if selected_project_id %}
-  <p class="fs-3">Ставки для проекта "{{ selected_project_title }}"</p>
-    <form method="post" action="{% url 'rates' %}?project_id={{ selected_project_id }}&project_title={{ selected_project_title|urlencode }}">
-
+  <p class="fs-3">Ставки для проекта "{{ selected_project_title }}" на доске "{{ selected_board_title }}"</p>
+    <!-- Форма для сохранения ставок; action будет обновляться динамически -->
+    <form method="post" id="rates_form">
       {% csrf_token %}
       {{ rates_formset.management_form }}
       <table class="table table-bordered">
@@ -46,20 +62,83 @@
                   {% render_field form.rate class="form-control" placeholder="Введите ставку" %}
                   <span class="input-group-text bg-white text-muted" style="pointer-events: none;">руб</span>
                 </div>
-                <!--<input type="number" step="0.01" name="{{ form.rate.name }}" value="{{ form.rate.value|floatformat:'-2' }}" class="form-control" />-->
               </td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
-      <button type="submit" class="btn btn-success" style ="width: 220px" name="save_rates">Сохранить ставки</button>
+      <button type="submit" class="btn btn-success" id="saveRatesButton" style="width: 220px" name="save_rates">Сохранить ставки</button>
     </form>
   {% endif %}
 
-  <!-- Автоматическая отправка формы при изменении выбора проекта -->
+  <!-- JavaScript для обновления GET-параметров формы сохранения -->
   <script>
+    // Функция обновляет атрибут action формы сохранения ставок
+    function updateRatesFormAction() {
+      const projectSelect = document.getElementById('project_id');
+      const boardSelect = document.getElementById('board_id');
+      const selectedProjectId = projectSelect.value;
+      const selectedProjectTitle = projectSelect.options[projectSelect.selectedIndex].text;
+      const selectedBoardId = boardSelect.value;
+      const selectedBoardTitle = boardSelect.options[boardSelect.selectedIndex].text;
+      const ratesForm = document.getElementById('rates_form');
+      // Формируем URL с GET-параметрами
+      const params = new URLSearchParams({
+          project_id: selectedProjectId,
+          project_title: selectedProjectTitle,
+          board_id: selectedBoardId,
+          board_title: selectedBoardTitle
+      });
+      ratesForm.action = `/rates/?${params.toString()}`;
+    }
+
+    // Функция для проверки доступности кнопки сохранения
+    function checkSaveButton() {
+      const boardSelect = document.getElementById('board_id');
+      const saveButton = document.getElementById('saveRatesButton');
+      if (!boardSelect.value || boardSelect.options[boardSelect.selectedIndex].text.includes("Нет досок")) {
+          saveButton.disabled = true;
+      } else {
+          saveButton.disabled = false;
+      }
+    }
+
+    // При смене проекта делаем AJAX-запрос для получения досок и обновляем селект и URL формы
     document.getElementById('project_id').addEventListener('change', function() {
-      document.getElementById('project_select_form').submit();
+      const selectedProjectId = this.value;
+      fetch(`/get_boards/?space_id=${selectedProjectId}`)
+        .then(response => response.json())
+        .then(data => {
+            const boardSelect = document.getElementById('board_id');
+            boardSelect.innerHTML = '';
+            if(data.boards.length > 0) {
+                data.boards.forEach((board, index) => {
+                    const option = document.createElement('option');
+                    option.value = board.id;
+                    option.text = board.title;
+                    if(index === 0) {
+                        option.selected = true;
+                    }
+                    boardSelect.appendChild(option);
+                });
+            } else {
+                const option = document.createElement('option');
+                option.value = '';
+                option.text = '-- Нет досок --';
+                boardSelect.appendChild(option);
+            }
+            updateRatesFormAction();
+            checkSaveButton();
+        });
     });
+
+    // При смене доски также обновляем URL формы
+    document.getElementById('board_id').addEventListener('change', function() {
+      updateRatesFormAction();
+      checkSaveButton();
+    });
+
+    // При загрузке страницы обновляем URL формы
+    document.addEventListener('DOMContentLoaded', updateRatesFormAction);
   </script>
 {% endblock %}

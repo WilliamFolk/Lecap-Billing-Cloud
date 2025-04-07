@@ -5,6 +5,24 @@ import logging
 
 logger = logging.getLogger('kaiten')
 
+def fetch_kaiten_boards(domain, bearer_key, space_id):
+    url = f"https://{domain}.kaiten.ru/api/latest/spaces/{space_id}/boards"
+    headers = {
+         "Authorization": f"Bearer {bearer_key}",
+         "Accept": "application/json",
+         "Content-Type": "application/json",
+    }
+    logger.debug(f"Запрос досок: url={url}, для пространства {space_id}")
+    try:
+         response = requests.get(url, headers=headers, timeout=10)
+         response.raise_for_status()
+         boards = response.json()
+         logger.info(f"Получено досок: {len(boards)} для пространства {space_id}")
+         return [{"id": board.get("id"), "title": board.get("title")} for board in boards]
+    except Exception as e:
+         logger.error(f"Ошибка при получении досок для пространства {space_id}: {e}", exc_info=True)
+         return []
+
 def fetch_kaiten_cards(domain, bearer_key, project_id, billing_field_id, billing_field_value):
     # Получение списка карточек (задач) по проекту, отфильтрованных по кастомному полю Billing (дата фильтруется вне класса)
     filter_data = {

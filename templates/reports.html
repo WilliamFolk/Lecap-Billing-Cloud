@@ -13,11 +13,19 @@
         {% if project.has_rates %}
           <option value="{{ project.id }}">{{ project.title }}</option>
         {% else %}
-          <option value="{{ project.id }}" disabled class="text-muted" title="У проекта нет назначенных ставок">
-            {{ project.title }} (не указаны ставки)
+          <option value="{{ project.id }}" disabled class="text-muted" title="У проекта нет ни одной доски с указанными ставками">
+            {{ project.title }} (нет ставок)
           </option>
         {% endif %}
       {% endfor %}
+    </select>
+  </div>
+  
+  <!-- Выбор доски -->
+  <div class="mb-3">
+    <label for="board" class="form-label">Выберите доску:</label>
+    <select name="board" id="board" class="form-select">
+      <option value="">-- Сначала выберите проект --</option>
     </select>
   </div>
 
@@ -37,7 +45,6 @@
     </div>
   </div>
   
-  <!-- Блок для вывода ошибки, если даты заданы неправильно -->
   <div class="mb-3">
     <span id="dateError" class="text-danger"></span>
   </div>
@@ -57,6 +64,40 @@
 </form>
 
 <script>
+  // Подгрузка списка досок при выборе проекта (для отчёта)
+  document.getElementById('project').addEventListener('change', function() {
+    const selectedProjectId = this.value;
+    fetch(`/get_boards/?space_id=${selectedProjectId}&for_report=1`)
+      .then(response => response.json())
+      .then(data => {
+          const boardSelect = document.getElementById('board');
+          boardSelect.innerHTML = '';
+          if(data.boards.length > 0) {
+              data.boards.forEach((board, index) => {
+                  const option = document.createElement('option');
+                  option.value = board.id;
+                  let optionText = board.title;
+                  if(!board.has_rates) {
+                      optionText += " (нет ставок)";
+                      option.disabled = true;
+                  }
+                  option.text = optionText;
+                  // Выбираем первую доску с наличием ставок
+                  if(index === 0 && board.has_rates) {
+                      option.selected = true;
+                  }
+                  boardSelect.appendChild(option);
+              });
+          } else {
+              const option = document.createElement('option');
+              option.value = '';
+              option.text = '-- Нет досок --';
+              boardSelect.appendChild(option);
+          }
+          checkFormValidity();
+      });
+  });
+
   // Функция проверки заполненности формы и корректности дат
   function checkFormValidity() {
     const projectSelect = document.getElementById('project');
@@ -67,15 +108,12 @@
     const dateError = document.getElementById('dateError');
     let valid = true;
     
-    // Сброс сообщения об ошибке
     dateError.textContent = '';
 
-    // Проверка заполненность всех обязательных полей
     if (!projectSelect.value || !startDateInput.value || !endDateInput.value || !templateSelect.value) {
       valid = false;
     }
     
-    // Проверка корректность диапазона дат
     if (startDateInput.value && endDateInput.value) {
       const start = new Date(startDateInput.value);
       const end = new Date(endDateInput.value);
@@ -85,7 +123,6 @@
       }
     }
     
-    // Если выбранный проект отключён, форма отмечается недействительной
     if (projectSelect.value) {
       const selectedOption = projectSelect.options[projectSelect.selectedIndex];
       if (selectedOption.disabled) {
@@ -101,7 +138,6 @@
   document.getElementById('end_date').addEventListener('input', checkFormValidity);
   document.getElementById('template').addEventListener('change', checkFormValidity);
 
-  // Кнопка установки текущей даты для поля "Конечная дата"
   document.getElementById('setTodayButton').addEventListener('click', function() {
     const today = "{{ today }}";
     document.getElementById('end_date').value = today;
