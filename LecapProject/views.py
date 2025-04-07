@@ -1,4 +1,5 @@
 import requests
+import io
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import get_user_model
 from django.contrib import messages
@@ -19,10 +20,12 @@ from docxTemplate.views import insert_table_after, set_table_borders, insert_par
 from django.forms import ModelForm, HiddenInput
 from .models import ProjectRate
 from .forms import DefaultRoleRateFormSet
-from docx.shared import Inches
+from docx.shared import Inches, Pt
 from django.db.models.functions import Cast
 from django.db.models import CharField
 from urllib.parse import urlencode
+from docx.enum.table import WD_ALIGN_VERTICAL
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 User = get_user_model()
 
@@ -189,6 +192,16 @@ def save_rates(request, rates_formset, project_id, project_title, board_id, boar
     return redirect(f"/rates/?{urlencode(params)}")
 
 
+def set_cell_text(cell, text):
+    paragraph = cell.paragraphs[0]
+    for run in paragraph.runs:
+        run.text = ""
+    run = paragraph.add_run(text)
+    # Сбрасывает отступы
+    paragraph.paragraph_format.left_indent = 0
+    paragraph.paragraph_format.first_line_indent = 0
+
+
 def replace_placeholder_in_paragraph(paragraph, placeholder, replacement):
     if placeholder in paragraph.text:
         full_text = paragraph.text
@@ -197,6 +210,7 @@ def replace_placeholder_in_paragraph(paragraph, placeholder, replacement):
         for child in list(p):
             p.remove(child)
         paragraph.add_run(new_text)
+
 
 @login_required
 def custom_administration(request):
@@ -359,7 +373,7 @@ def generate_report(request, project, template_instance, start_date, end_date, b
                 amount = rate * hours
                 total_amount += amount
 
-                hours_str = f"{hours:.2f}"
+                hours_str = f"{hours:.2f}".replace('.', ',')
                 try:
                     dt = datetime.strptime(log_date_iso, "%Y-%m-%d")
                     formatted_date = dt.strftime("%d.%m.%Y")
@@ -417,20 +431,42 @@ def generate_report(request, project, template_instance, start_date, end_date, b
                 insert_paragraph_after_table(table, after_text.strip())
             for row in table_rows:
                 row_cells = table.add_row().cells
-                row_cells[0].text = row["date"]
+                # row_cells[0].text = row["date"]
+                set_cell_text(row_cells[0], row["date"])
+                row_cells[0].width = Inches(1.2)
                 row_cells[1].text = row["specialist"]
-                row_cells[1].width = Inches(1.5)
+                row_cells[1].width = Inches(2)
                 row_cells[2].text = row["position"]
+                row_cells[2].width = Inches(1.5)
                 row_cells[3].text = row["rate"]
+                row_cells[3].width = Inches(2.5)
                 row_cells[4].text = row["work"]
-                row_cells[4].width = Inches(3)
+                row_cells[4].width = Inches(3.5)
                 row_cells[5].text = row["hours"]
+                row_cells[5].width = Inches(1.2)
                 row_cells[6].text = row["cost"]
                 row_cells[6].width = Inches(1.5)
             table_placeholder_found = True
             break
-
-    import io
+    for i, row in enumerate(table.rows):
+        for j, cell in enumerate(row.cells):
+            # Выравнивание содержимого ячейки по нижнему краю
+            cell.vertical_alignment = WD_ALIGN_VERTICAL.BOTTOM
+            for paragraph in cell.paragraphs:
+                # Выравнивание по левому краю (не justify)
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                # Одинарное межстрочное расстояние и сброс отступов
+                paragraph.paragraph_format.line_spacing = 1
+                paragraph.paragraph_format.space_before = Pt(0)
+                paragraph.paragraph_format.space_after = Pt(0)
+                paragraph.paragraph_format.left_indent = 0
+                paragraph.paragraph_format.first_line_indent = 0
+                for run in paragraph.runs:
+                    run.font.size = Pt(11)
+                    if i == 0:
+                        run.font.bold = True
+                    elif j == 0:
+                        run.font.bold = True
     f_io = io.BytesIO()
     doc.save(f_io)
     f_io.seek(0)
