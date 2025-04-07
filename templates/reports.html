@@ -7,7 +7,7 @@
   <!-- Выбор проекта -->
   <div class="mb-3">
     <label for="project" class="form-label">Выберите проект:</label>
-    <select name="project" id="project" class="form-select">
+    <select name="project" id="project_id" class="form-select">
       <option value="">-- Выберите проект --</option>
       {% for project in projects %}
         {% if project.has_rates %}
@@ -65,42 +65,41 @@
 
 <script>
   // Подгрузка списка досок при выборе проекта (для отчёта)
-  document.getElementById('project').addEventListener('change', function() {
-    const selectedProjectId = this.value;
-    fetch(`/get_boards/?space_id=${selectedProjectId}&for_report=1`)
-      .then(response => response.json())
-      .then(data => {
-          const boardSelect = document.getElementById('board');
-          boardSelect.innerHTML = '';
-          if(data.boards.length > 0) {
-              data.boards.forEach((board, index) => {
-                  const option = document.createElement('option');
-                  option.value = board.id;
-                  let optionText = board.title;
-                  if(!board.has_rates) {
-                      optionText += " (нет ставок)";
-                      option.disabled = true;
-                  }
-                  option.text = optionText;
-                  // Выбираем первую доску с наличием ставок
-                  if(index === 0 && board.has_rates) {
-                      option.selected = true;
-                  }
-                  boardSelect.appendChild(option);
-              });
-          } else {
-              const option = document.createElement('option');
-              option.value = '';
-              option.text = '-- Нет досок --';
-              boardSelect.appendChild(option);
+  document.getElementById('project_id').addEventListener('change', function() {
+  const selectedProjectId = this.value;
+  fetch(`/get_boards/?space_id=${selectedProjectId}&for_report=1`)
+    .then(response => response.json())
+    .then(data => {
+      const boardSelect = document.getElementById('board');
+      boardSelect.innerHTML = '';
+      if (data.boards.length > 0) {
+        data.boards.forEach((board, index) => {
+          const option = document.createElement('option');
+          option.value = board.id;
+          let optionText = board.title;
+          if (!board.has_rates) {
+            optionText += " (нет ставок)";
+            option.disabled = true;
           }
-          checkFormValidity();
-      });
+          option.text = optionText;
+          if (index === 0 && board.has_rates) {
+            option.selected = true;
+          }
+          boardSelect.appendChild(option);
+        });
+      } else {
+        const option = document.createElement('option');
+        option.value = '';
+        option.text = '-- Нет досок --';
+        boardSelect.appendChild(option);
+      }
+      checkFormValidity();
+    });
   });
 
   // Функция проверки заполненности формы и корректности дат
   function checkFormValidity() {
-    const projectSelect = document.getElementById('project');
+    const projectSelect = document.getElementById('project_id');
     const startDateInput = document.getElementById('start_date');
     const endDateInput = document.getElementById('end_date');
     const templateSelect = document.getElementById('template');
@@ -123,17 +122,11 @@
       }
     }
     
-    if (projectSelect.value) {
-      const selectedOption = projectSelect.options[projectSelect.selectedIndex];
-      if (selectedOption.disabled) {
-        valid = false;
-      }
-    }
-    
     button.disabled = !valid;
   }
 
-  document.getElementById('project').addEventListener('change', checkFormValidity);
+
+  document.getElementById('project_id').addEventListener('change', checkFormValidity);
   document.getElementById('start_date').addEventListener('input', checkFormValidity);
   document.getElementById('end_date').addEventListener('input', checkFormValidity);
   document.getElementById('template').addEventListener('change', checkFormValidity);

@@ -52,7 +52,7 @@ def get_boards(request):
             rate_exists = ProjectRate.objects.filter(
                 project_id=space_id,
                 board_id=board.get('id')
-            ).exclude(rate__isnull=True).exclude(rate="").exists()
+            ).exclude(rate__isnull=True).exists()
             board["has_rates"] = rate_exists
     return JsonResponse({"boards": boards})
 
@@ -123,8 +123,14 @@ def rates_view(request):
         rates_formset = ProjectRateFormSet(queryset=ProjectRate.objects.filter(project_id=project_id, board_id=board_id))
 
     if request.method == "POST":
-        rates_formset = ProjectRateFormSet(request.POST, queryset=ProjectRate.objects.filter(project_id=project_id, board_id=board_id))
+        rates_formset = ProjectRateFormSet(
+            request.POST, 
+            queryset=ProjectRate.objects.filter(project_id=project_id, board_id=board_id)
+        )
         return save_rates(request, rates_formset, project_id, project_title, board_id, board_title)
+
+
+
 
 
     context = {
@@ -181,7 +187,6 @@ def save_rates(request, rates_formset, project_id, project_title, board_id, boar
         'board_title': board_title,
     }
     return redirect(f"/rates/?{urlencode(params)}")
-
 
 
 def replace_placeholder_in_paragraph(paragraph, placeholder, replacement):
