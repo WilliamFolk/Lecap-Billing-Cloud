@@ -22,7 +22,7 @@ from accounts.views import home_view
 
 urlpatterns = [
     path('docxTemplate/', include('docxTemplate.urls', namespace='docxTemplate')), 
-    path('admin/', admin.site.urls),
+    # path('admin/', admin.site.urls),
     path('accounts/', include('accounts.urls')),
     path('docxTemplate/templates/', views.templates_view, name='templates'),
     path('reports/', views.reports_view, name='reports'),

@@ -44,7 +44,7 @@ def delete_user(request, user_id):
         return redirect('custom_administration')
     return render(request, 'delete_user.html', {'user': user_instance})
 
-
+@login_required
 def register(request):
     if request.method == 'POST':
         form = CustomUserCreationForm(request.POST)

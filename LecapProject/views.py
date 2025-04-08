@@ -287,7 +287,6 @@ def custom_administration(request):
             user_form = CustomUserForm(request.POST)
             if user_form.is_valid():
                 new_user = user_form.save(commit=False)
-                # password = user_form.cleaned_data.get('password')
                 password = user_form.cleaned_data.get('password')
                 if password:
                     new_user.set_password(password)
@@ -295,6 +294,18 @@ def custom_administration(request):
                     new_user.set_password("defaultpassword")
                 new_user.save()
                 messages.success(request, "Пользователь успешно создан.")
+                return redirect('custom_administration')
+            else:
+                for field, errors in user_form.errors.items():
+                    for error in errors:
+                        """ERROR_TRANSLATIONS = {
+                            "This field is required.": "Это поле обязательно для заполнения.",
+                            "Enter a valid email address.": "Введите корректный адрес электронной почты.",
+                            "A user with that email already exists.": "Пользователь с такой почтой уже зарегистрирован.",
+                            "This password is too short. It must contain at least 8 characters.": "Пароль слишком короткий. Минимум 8 символов.",
+                        }
+                        translated = ERROR_TRANSLATIONS.get(error, error)"""
+                        messages.error(request, f"{field.capitalize()}: {error}")
                 return redirect('custom_administration')
         elif 'save_default_rates' in request.POST:
             default_rate_formset = DefaultRoleRateFormSet(request.POST, queryset=DefaultRoleRate.objects.all())
