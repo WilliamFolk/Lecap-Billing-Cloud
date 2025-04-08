@@ -76,8 +76,6 @@
         </td>
       </tr>
       {% endfor %}
-      
-
     </tbody>
   </table>
   <button type="submit" class="btn btn-success" id="saveRatesButton" style="width: 220px" name="save_rates">Сохранить ставки</button>
@@ -87,7 +85,6 @@
 <form method="post">
   {% csrf_token %}
   {{ default_rate_formset.management_form }}
-
   <table class="table align-middle">
     <thead>
       <tr>
@@ -114,43 +111,56 @@
   </table>
   <button type="submit" name="save_default_rates" class="btn btn-primary" style="width: 270px;">Сохранить стандартные ставки</button>
 </form>
-
 {% endif %}
 
 <script>
-  // При выборе проекта выполняется AJAX-запрос для получения досок и затем перезагружается страница
+  // Обработка выбора проекта
   document.getElementById('project_id').addEventListener('change', function() {
     const selectedProjectId = this.value;
+    const selectedProjectTitle = this.options[this.selectedIndex].text;
+
     fetch(`/get_boards/?space_id=${selectedProjectId}`)
       .then(response => response.json())
       .then(data => {
         const boardSelect = document.getElementById('board_id');
         boardSelect.innerHTML = '';
+
         if (data.boards.length > 0) {
           data.boards.forEach((board, index) => {
             const option = document.createElement('option');
             option.value = board.id;
             option.text = board.title;
-            if (index === 0) {
-              option.selected = true;
-            }
+            if (index === 0) option.selected = true;
             boardSelect.appendChild(option);
           });
-        } else {
-          const option = document.createElement('option');
-          option.value = '';
-          option.text = '-- Нет досок --';
-          boardSelect.appendChild(option);
+
+          const form = document.getElementById('project_select_form');
+          const hiddenProjectTitle = document.createElement('input');
+          hiddenProjectTitle.type = 'hidden';
+          hiddenProjectTitle.name = 'project_title';
+          hiddenProjectTitle.value = selectedProjectTitle;
+          form.appendChild(hiddenProjectTitle);
+
+          const hiddenBoardTitle = document.createElement('input');
+          hiddenBoardTitle.type = 'hidden';
+          hiddenBoardTitle.name = 'board_title';
+          hiddenBoardTitle.value = data.boards[0].title;
+          form.appendChild(hiddenBoardTitle);
         }
+
         document.getElementById('project_select_form').submit();
       });
   });
 
+  // Обработка выбора доски
   document.getElementById('board_id').addEventListener('change', function() {
+    const boardTitle = this.options[this.selectedIndex].text;
+    const hiddenBoardTitle = document.createElement('input');
+    hiddenBoardTitle.type = 'hidden';
+    hiddenBoardTitle.name = 'board_title';
+    hiddenBoardTitle.value = boardTitle;
+    document.getElementById('project_select_form').appendChild(hiddenBoardTitle);
     document.getElementById('project_select_form').submit();
-  });
-  
-  document.addEventListener('DOMContentLoaded', function() {
   });
 </script>
 {% endblock %}
