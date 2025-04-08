@@ -50,13 +50,45 @@ def get_boards(request):
     bearer_key = admin_settings.api_auth_key
     boards = fetch_kaiten_boards(domain, bearer_key, space_id)
     if for_report:
-        # Проверка для каждой доски: есть ли ставки для выбранного проекта (space_id) и этой доски
+        roles = fetch_kaiten_roles(domain, bearer_key)
         for board in boards:
-            rate_exists = ProjectRate.objects.filter(
-                project_id=space_id,
-                board_id=board.get('id')
-            ).exclude(rate__isnull=True).exists()
-            board["has_rates"] = rate_exists
+            board_valid = True  # доска считается доступной, если для каждой роли есть ставка (кастомная или дефолтная)
+            auto_used = False   # флаг, показывающий, что для хотя бы одной роли ставка берётся из дефолтных
+            for role in roles:
+                role_id = str(role.get('id'))
+                try:
+                    pr = ProjectRate.objects.get(
+                        project_id=space_id,
+                        board_id=board.get('id'),
+                        role_id=role_id
+                    )
+                    if pr.rate is None:
+                        # Если кастомная ставка не задана, пробует взять дефолтную ставку
+                        try:
+                            dr = DefaultRoleRate.objects.get(role_id=role_id)
+                            if dr.default_rate is not None:
+                                auto_used = True
+                            else:
+                                board_valid = False
+                                break
+                        except DefaultRoleRate.DoesNotExist:
+                            board_valid = False
+                            break
+                except ProjectRate.DoesNotExist:
+                    # Если записи нет, пытается взять дефолтную ставку
+                    try:
+                        dr = DefaultRoleRate.objects.get(role_id=role_id)
+                        if dr.default_rate is not None:
+                            auto_used = True
+                        else:
+                            board_valid = False
+                            break
+                    except DefaultRoleRate.DoesNotExist:
+                        board_valid = False
+                        break
+            board["has_rates"] = board_valid
+            if board_valid and auto_used:
+                board["title"] += " (автоставки)"
     return JsonResponse({"boards": boards})
 
 
@@ -67,9 +99,21 @@ def rates_view(request):
     domain = admin_settings.url_domain_value_id
     bearer_key = admin_settings.api_auth_key
 
+    # Новый блок синхронизации ролей с Kaiten API для таблицы DefaultRoleRate
+    if domain and bearer_key:
+        default_roles = fetch_kaiten_roles(domain, bearer_key)
+        api_role_ids = {str(role.get('id')) for role in default_roles}
+        # Удаляет записи для ролей, которых уже нет в API
+        DefaultRoleRate.objects.exclude(role_id__in=api_role_ids).delete()
+        # Для каждой роли из API создаёт запись, если её ещё нет
+        for role in default_roles:
+            DefaultRoleRate.objects.get_or_create(
+                role_id=str(role.get('id')),
+                defaults={'role_name': role.get('name')}
+            )
+
     projects = fetch_kaiten_projects(domain, bearer_key)
 
-    # Извлечение параметров из GET-запроса
     project_id = request.GET.get('project_id')
     project_title = request.GET.get('project_title', '')
     board_id = request.GET.get('board_id')
@@ -118,32 +162,21 @@ def rates_view(request):
             )
         rates_formset = ProjectRateFormSet(queryset=ProjectRate.objects.filter(project_id=project_id, board_id=board_id))
 
-    # Обработка POST-запроса с различными формами
+    # Обработка POST-запроса
     if request.method == "POST":
-        # Если нажата кнопка сохранения стандартных ставок
         if 'save_default_rates' in request.POST:
             default_rate_formset = DefaultRoleRateFormSet(request.POST, queryset=DefaultRoleRate.objects.all())
-            # print("POST данные по стандартным ставкам:", request.POST)  # Отладочный вывод POST-данных
             if default_rate_formset.is_valid():
-                # print("Форма стандартных ставок валидна.")
                 changed = False
-                # Проверка каждой формы на изменения
                 for form in default_rate_formset.forms:
                     if form.has_changed():
                         changed = True
-                        """ print(f"Форма с id={form.instance.pk} изменилась: {form.changed_data}")
-                    else:
-                         print(f"Форма с id={form.instance.pk} не изменилась") """
                 if changed:
                     instances = default_rate_formset.save(commit=False)
                     for instance in instances:
-                        # print(f"Сохранение DefaultRate id={instance.pk}: default_rate={instance.default_rate}")
                         instance.save()
-                """else:
-                     print("Нет изменений в данных formset.")"""
                 messages.success(request, "Стандартные ставки сохранены.")
             else:
-                # print("Ошибки в форме:", default_rate_formset.errors)
                 messages.error(request, "Проверьте введённые данные в стандартных ставках.")
             params = {
                 'project_id': project_id,
@@ -152,9 +185,7 @@ def rates_view(request):
                 'board_title': board_title,
             }
             return redirect(f"/rates/?{urlencode(params)}")
-
         else:
-            # Обработка сохранения ставок для проекта
             rates_formset = ProjectRateFormSet(
                 request.POST, 
                 queryset=ProjectRate.objects.filter(project_id=project_id, board_id=board_id)
@@ -172,6 +203,7 @@ def rates_view(request):
         'default_rate_formset': DefaultRoleRateFormSet(queryset=DefaultRoleRate.objects.all()),
     }
     return render(request, 'rates.html', context)
+
 
 class ProjectRateForm(forms.ModelForm):
     rate = forms.IntegerField(required=False, widget=forms.NumberInput(), label="Почасовая ставка")
@@ -337,15 +369,47 @@ def reports_view(request):
     for project in projects:
         project_id = str(project.get('id'))
         boards = fetch_kaiten_boards(domain, bearer_key, project_id)
-        board_has_rate = False
+        valid_board_exists = False
+        roles = fetch_kaiten_roles(domain, bearer_key)
         for board in boards:
-            if ProjectRate.objects.annotate(rate_str=Cast('rate', CharField())).filter(
-                    project_id=project_id,
-                    board_id=board.get('id')
-                ).exclude(rate_str__isnull=True).exclude(rate_str="").exists():
-                board_has_rate = True
-                break
-        project['has_rates'] = board_has_rate
+            board_valid = True
+            auto_used = False
+            for role in roles:
+                role_id = str(role.get('id'))
+                try:
+                    pr = ProjectRate.objects.get(
+                        project_id=project_id,
+                        board_id=board.get('id'),
+                        role_id=role_id
+                    )
+                    if pr.rate is None:
+                        try:
+                            dr = DefaultRoleRate.objects.get(role_id=role_id)
+                            if dr.default_rate is not None:
+                                auto_used = True
+                            else:
+                                board_valid = False
+                                break
+                        except DefaultRoleRate.DoesNotExist:
+                            board_valid = False
+                            break
+                except ProjectRate.DoesNotExist:
+                    try:
+                        dr = DefaultRoleRate.objects.get(role_id=role_id)
+                        if dr.default_rate is not None:
+                            auto_used = True
+                        else:
+                            board_valid = False
+                            break
+                    except DefaultRoleRate.DoesNotExist:
+                        board_valid = False
+                        break
+            board["has_rates"] = board_valid
+            if board_valid and auto_used:
+                board["title"] += " (автоставки)"
+            if board_valid:
+                valid_board_exists = True
+        project['has_rates'] = valid_board_exists
 
     moscow_tz = pytz.timezone("Europe/Moscow")
     today = datetime.now(moscow_tz).date().strftime("%Y-%m-%d")
@@ -415,11 +479,24 @@ def generate_report(request, project, template_instance, start_date, end_date, b
                         board_id=board_id,
                         role_id=str(log.get("role_id"))
                     )
-                    rate = pr.rate if pr.rate is not None else 0
+                    if pr.rate is not None:
+                        rate = pr.rate
+                    else:
+                        try:
+                            dr = DefaultRoleRate.objects.get(role_id=str(log.get("role_id")))
+                            rate = dr.default_rate if dr.default_rate is not None else 0
+                        except DefaultRoleRate.DoesNotExist:
+                            rate = 0
                     role_name = pr.role_name
                 except ProjectRate.DoesNotExist:
-                    rate = 0
-                    role_name = "Emplyoee (Нулевая ставка)"
+                    try:
+                        dr = DefaultRoleRate.objects.get(role_id=str(log.get("role_id")))
+                        rate = dr.default_rate if dr.default_rate is not None else 0
+                        role_name = dr.role_name
+                    except DefaultRoleRate.DoesNotExist:
+                        rate = 0
+                        role_name = "Employee (Нулевая ставка)"
+
 
                 amount = rate * hours
                 total_amount += amount
