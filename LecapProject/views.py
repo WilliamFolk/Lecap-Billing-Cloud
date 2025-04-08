@@ -497,7 +497,6 @@ def generate_report(request, project, template_instance, start_date, end_date, b
                         rate = 0
                         role_name = "Employee (Нулевая ставка)"
 
-
                 amount = rate * hours
                 total_amount += amount
 
@@ -511,8 +510,10 @@ def generate_report(request, project, template_instance, start_date, end_date, b
                 formatted_rate = f"{rate:.2f}".replace('.', ',') + " ₽"
                 formatted_cost = f"{amount:.2f}".replace('.', ',') + " ₽"
                 
+                # Добавляем также исходную дату для сортировки
                 table_rows.append({
                     "date": formatted_date,
+                    "date_iso": log_date_iso,  # ключ для сортировки
                     "specialist": log.get("author", {}).get("full_name", "Неизвестно"),
                     "position": role_name,
                     "rate": formatted_rate,
@@ -524,6 +525,9 @@ def generate_report(request, project, template_instance, start_date, end_date, b
     if not table_rows:
         messages.error(request, "Записей по времени в выбранном периоде в проекте не найдено")
         return redirect('reports')
+
+    # Сортируем записи по дате (от старой к новой) по значению "date_iso"
+    table_rows.sort(key=lambda row: row["date_iso"])
 
     total_time_placeholder = f"{total_time:.2f} ч"
     total_amount_placeholder = f"{total_amount:.2f}".replace('.', ',') + " ₽ (" + convert_number_to_text(total_amount) + ")"
@@ -559,7 +563,6 @@ def generate_report(request, project, template_instance, start_date, end_date, b
                 insert_paragraph_after_table(table, after_text.strip())
             for row in table_rows:
                 row_cells = table.add_row().cells
-                # row_cells[0].text = row["date"]
                 set_cell_text(row_cells[0], row["date"])
                 row_cells[0].width = Inches(1.2)
                 row_cells[1].text = row["specialist"]
@@ -578,12 +581,9 @@ def generate_report(request, project, template_instance, start_date, end_date, b
             break
     for i, row in enumerate(table.rows):
         for j, cell in enumerate(row.cells):
-            # Выравнивание содержимого ячейки по нижнему краю
             cell.vertical_alignment = WD_ALIGN_VERTICAL.BOTTOM
             for paragraph in cell.paragraphs:
-                # Выравнивание по левому краю (не justify)
                 paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                # Одинарное межстрочное расстояние и сброс отступов
                 paragraph.paragraph_format.line_spacing = 1
                 paragraph.paragraph_format.space_before = Pt(0)
                 paragraph.paragraph_format.space_after = Pt(0)
