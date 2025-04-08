@@ -103,11 +103,13 @@
 </script>
 <script>
   setTimeout(function() {
-    document.querySelectorAll('.alert').forEach(function(alert) {
+    document.querySelectorAll('.alert:not(.alert-info)').forEach(function(alert) {
       var bsAlert = bootstrap.Alert.getOrCreateInstance(alert);
       bsAlert.close();
     });
-  }, 7000);
+  }, 5000);
+</script>
+
 </script>
 <script>
   document.querySelectorAll('input.default-value').forEach(function(input) {
