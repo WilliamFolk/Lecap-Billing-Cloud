@@ -3,8 +3,10 @@ __pycache__/
 *.py[cod]
 *.sqlite3
 *.log
+*log.*
 *.swp
 *.tmp
 .env
 media/
+
 docxTemplate/savedFiles/
