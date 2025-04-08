@@ -497,7 +497,6 @@ def generate_report(request, project, template_instance, start_date, end_date, b
                 formatted_rate = f"{rate:.2f}".replace('.', ',') + " ₽"
                 formatted_cost = f"{amount:.2f}".replace('.', ',') + " ₽"
                 
-                # Добавляем также исходную дату для сортировки
                 table_rows.append({
                     "date": formatted_date,
                     "date_iso": log_date_iso,  # ключ для сортировки
@@ -512,8 +511,6 @@ def generate_report(request, project, template_instance, start_date, end_date, b
     if not table_rows:
         messages.error(request, "Записей по времени в выбранном периоде в проекте не найдено")
         return redirect('reports')
-
-    # Сортируем записи по дате (от старой к новой) по значению "date_iso"
     table_rows.sort(key=lambda row: row["date_iso"])
 
     total_time_placeholder = f"{total_time:.2f} ч"
