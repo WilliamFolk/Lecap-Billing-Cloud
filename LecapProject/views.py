@@ -41,53 +41,68 @@ def administration_view(request):
     # Иначе можно отобразить кастомную страницу редактирования пользователей
     return render(request, 'custom_admin_users.html')
 
+def check_board_rates(board, project_id, roles):
+    """
+    Функция проверяет, удовлетворяет ли доска условию наличия ставок для каждой роли.
+    Если для роли отсутствует кастомная ставка, ищется дефолтная ставка.
+    Возвращает:
+      - board_valid: True, если для всех ролей найдена ставка (кастомная или дефолтная);
+      - auto_used: True, если хотя бы для одной роли ставка берётся из дефолтных.
+    """
+    board_valid = True
+    auto_used = False
+    board_id = board.get("id")
+    for role in roles:
+        role_id = str(role.get("id"))
+        try:
+            pr = ProjectRate.objects.get(
+                project_id=project_id,
+                board_id=board_id,
+                role_id=role_id
+            )
+            if pr.rate is None:
+                try:
+                    dr = DefaultRoleRate.objects.get(role_id=role_id)
+                    if dr.default_rate is not None:
+                        auto_used = True
+                    else:
+                        board_valid = False
+                        break
+                except DefaultRoleRate.DoesNotExist:
+                    board_valid = False
+                    break
+        except ProjectRate.DoesNotExist:
+            try:
+                dr = DefaultRoleRate.objects.get(role_id=role_id)
+                if dr.default_rate is not None:
+                    auto_used = True
+                else:
+                    board_valid = False
+                    break
+            except DefaultRoleRate.DoesNotExist:
+                board_valid = False
+                break
+    return board_valid, auto_used
+
 @login_required
 def get_boards(request):
+    """
+    Получает список досок для проекта (space_id) и для отчетов аннотирует каждую доску по наличию ставок.
+    Если для доски найдены только дефолтные ставки для каких-то ролей, к её заголовку добавляется суффикс "(автоставки)".
+    """
     space_id = request.GET.get('space_id')
     for_report = request.GET.get('for_report') == "1"
     admin_settings, _ = AdminSettings.objects.get_or_create(pk=1)
     domain = admin_settings.url_domain_value_id
     bearer_key = admin_settings.api_auth_key
+
     boards = fetch_kaiten_boards(domain, bearer_key, space_id)
     if for_report:
         roles = fetch_kaiten_roles(domain, bearer_key)
         for board in boards:
-            board_valid = True  # доска считается доступной, если для каждой роли есть ставка (кастомная или дефолтная)
-            auto_used = False   # флаг, показывающий, что для хотя бы одной роли ставка берётся из дефолтных
-            for role in roles:
-                role_id = str(role.get('id'))
-                try:
-                    pr = ProjectRate.objects.get(
-                        project_id=space_id,
-                        board_id=board.get('id'),
-                        role_id=role_id
-                    )
-                    if pr.rate is None:
-                        # Если кастомная ставка не задана, пробует взять дефолтную ставку
-                        try:
-                            dr = DefaultRoleRate.objects.get(role_id=role_id)
-                            if dr.default_rate is not None:
-                                auto_used = True
-                            else:
-                                board_valid = False
-                                break
-                        except DefaultRoleRate.DoesNotExist:
-                            board_valid = False
-                            break
-                except ProjectRate.DoesNotExist:
-                    # Если записи нет, пытается взять дефолтную ставку
-                    try:
-                        dr = DefaultRoleRate.objects.get(role_id=role_id)
-                        if dr.default_rate is not None:
-                            auto_used = True
-                        else:
-                            board_valid = False
-                            break
-                    except DefaultRoleRate.DoesNotExist:
-                        board_valid = False
-                        break
-            board["has_rates"] = board_valid
-            if board_valid and auto_used:
+            valid, auto_used = check_board_rates(board, space_id, roles)
+            board["has_rates"] = valid
+            if valid and auto_used:
                 board["title"] += " (автоставки)"
     return JsonResponse({"boards": boards})
 
@@ -360,54 +375,26 @@ def custom_administration(request):
 
 @login_required
 def reports_view(request):
+    """
+    Функция отображения вкладки "Отчёты". Для каждого проекта проверяет наличие хотя бы одной доски,
+    для которой удовлетворены условия ставок (либо кастомная, либо дефолтная с заполненным значением).
+    """
     admin_settings, _ = AdminSettings.objects.get_or_create(pk=1)
     domain = admin_settings.url_domain_value_id
     bearer_key = admin_settings.api_auth_key
 
     projects = fetch_kaiten_projects(domain, bearer_key)
-    # Проверка для каждого проекта: есть ли хотя бы одна доска с указанными ставками
+    roles = fetch_kaiten_roles(domain, bearer_key)
     for project in projects:
         project_id = str(project.get('id'))
         boards = fetch_kaiten_boards(domain, bearer_key, project_id)
         valid_board_exists = False
-        roles = fetch_kaiten_roles(domain, bearer_key)
         for board in boards:
-            board_valid = True
-            auto_used = False
-            for role in roles:
-                role_id = str(role.get('id'))
-                try:
-                    pr = ProjectRate.objects.get(
-                        project_id=project_id,
-                        board_id=board.get('id'),
-                        role_id=role_id
-                    )
-                    if pr.rate is None:
-                        try:
-                            dr = DefaultRoleRate.objects.get(role_id=role_id)
-                            if dr.default_rate is not None:
-                                auto_used = True
-                            else:
-                                board_valid = False
-                                break
-                        except DefaultRoleRate.DoesNotExist:
-                            board_valid = False
-                            break
-                except ProjectRate.DoesNotExist:
-                    try:
-                        dr = DefaultRoleRate.objects.get(role_id=role_id)
-                        if dr.default_rate is not None:
-                            auto_used = True
-                        else:
-                            board_valid = False
-                            break
-                    except DefaultRoleRate.DoesNotExist:
-                        board_valid = False
-                        break
-            board["has_rates"] = board_valid
-            if board_valid and auto_used:
+            valid, auto_used = check_board_rates(board, project_id, roles)
+            board["has_rates"] = valid
+            if valid and auto_used:
                 board["title"] += " (автоставки)"
-            if board_valid:
+            if valid:
                 valid_board_exists = True
         project['has_rates'] = valid_board_exists
 
