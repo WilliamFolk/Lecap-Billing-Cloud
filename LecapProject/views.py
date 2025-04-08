@@ -62,28 +62,29 @@ def get_boards(request):
 
 @login_required
 def rates_view(request):
+    # Получение настроек и ключей для API
     admin_settings, _ = AdminSettings.objects.get_or_create(pk=1)
     domain = admin_settings.url_domain_value_id
     bearer_key = admin_settings.api_auth_key
 
     projects = fetch_kaiten_projects(domain, bearer_key)
 
-    # Получение параметров из GET
+    # Извлечение параметров из GET-запроса
     project_id = request.GET.get('project_id')
     project_title = request.GET.get('project_title', '')
     board_id = request.GET.get('board_id')
     board_title = request.GET.get('board_title', '')
-    
+
     if project_id and not project_title:
         for project in projects:
             if str(project['id']) == str(project_id):
                 project_title = project['title']
                 break
+
     if not project_id and projects:
         project_id = str(projects[0]['id'])
         project_title = projects[0]['title']
-    
-    # Получение списка досок выбранного проекта
+
     boards = []
     if project_id:
         boards = fetch_kaiten_boards(domain, bearer_key, project_id)
@@ -91,19 +92,20 @@ def rates_view(request):
             board_id = boards[0]['id']
             board_title = boards[0]['title']
 
-    # Формирование formset для ставок (фильтр теперь по проекту и доске)
+    # Формирование formset для ставок проекта
     ProjectRateFormSet = modelformset_factory(ProjectRate, form=ProjectRateForm, extra=0)
     rates_formset = None
 
     if project_id and board_id:
         roles = fetch_kaiten_roles(domain, bearer_key)
         current_role_ids = [str(role.get('id')) for role in roles]
-        # Удаление записей, для которых больше не актуальна роль, с учётом доски
+
         ProjectRate.objects.filter(project_id=project_id, board_id=board_id)\
             .exclude(role_id__in=current_role_ids).delete()
-        
+
+        # Если для роли ставка не задана, оставляет rate равным None.
         for role in roles:
-            pr, created = ProjectRate.objects.get_or_create(
+            ProjectRate.objects.get_or_create(
                 project_id=project_id,
                 board_id=board_id,
                 role_id=str(role.get('id')),
@@ -114,27 +116,50 @@ def rates_view(request):
                     'rate': None
                 }
             )
-            # Если ставка пустая, пытается установить дефолтное значение (по роли)
-            if pr.rate is None:
-                try:
-                    dr = DefaultRoleRate.objects.get(role_id=str(role.get('id')))
-                    if dr.default_rate is not None:
-                        pr.rate = dr.default_rate
-                        pr.save()
-                except DefaultRoleRate.DoesNotExist:
-                    pass
         rates_formset = ProjectRateFormSet(queryset=ProjectRate.objects.filter(project_id=project_id, board_id=board_id))
 
+    # Обработка POST-запроса с различными формами
     if request.method == "POST":
-        rates_formset = ProjectRateFormSet(
-            request.POST, 
-            queryset=ProjectRate.objects.filter(project_id=project_id, board_id=board_id)
-        )
-        return save_rates(request, rates_formset, project_id, project_title, board_id, board_title)
+        # Если нажата кнопка сохранения стандартных ставок
+        if 'save_default_rates' in request.POST:
+            default_rate_formset = DefaultRoleRateFormSet(request.POST, queryset=DefaultRoleRate.objects.all())
+            # print("POST данные по стандартным ставкам:", request.POST)  # Отладочный вывод POST-данных
+            if default_rate_formset.is_valid():
+                # print("Форма стандартных ставок валидна.")
+                changed = False
+                # Проверка каждой формы на изменения
+                for form in default_rate_formset.forms:
+                    if form.has_changed():
+                        changed = True
+                        """ print(f"Форма с id={form.instance.pk} изменилась: {form.changed_data}")
+                    else:
+                         print(f"Форма с id={form.instance.pk} не изменилась") """
+                if changed:
+                    instances = default_rate_formset.save(commit=False)
+                    for instance in instances:
+                        # print(f"Сохранение DefaultRate id={instance.pk}: default_rate={instance.default_rate}")
+                        instance.save()
+                """else:
+                     print("Нет изменений в данных formset.")"""
+                messages.success(request, "Стандартные ставки сохранены.")
+            else:
+                # print("Ошибки в форме:", default_rate_formset.errors)
+                messages.error(request, "Проверьте введённые данные в стандартных ставках.")
+            params = {
+                'project_id': project_id,
+                'project_title': project_title,
+                'board_id': board_id,
+                'board_title': board_title,
+            }
+            return redirect(f"/rates/?{urlencode(params)}")
 
-
-
-
+        else:
+            # Обработка сохранения ставок для проекта
+            rates_formset = ProjectRateFormSet(
+                request.POST, 
+                queryset=ProjectRate.objects.filter(project_id=project_id, board_id=board_id)
+            )
+            return save_rates(request, rates_formset, project_id, project_title, board_id, board_title)
 
     context = {
         'rates_formset': rates_formset,
@@ -144,10 +169,9 @@ def rates_view(request):
         'selected_project_title': project_title,
         'selected_board_id': board_id,
         'selected_board_title': board_title,
+        'default_rate_formset': DefaultRoleRateFormSet(queryset=DefaultRoleRate.objects.all()),
     }
     return render(request, 'rates.html', context)
-
-
 
 class ProjectRateForm(forms.ModelForm):
     rate = forms.IntegerField(required=False, widget=forms.NumberInput(), label="Почасовая ставка")
@@ -156,11 +180,24 @@ class ProjectRateForm(forms.ModelForm):
         model = ProjectRate
         fields = ('id', 'rate', 'project_id', 'board_id')
         widgets = {
-            'id': HiddenInput(),
-            'project_id': HiddenInput(),
-            'board_id': HiddenInput(),
+            'id': forms.HiddenInput(),
+            'project_id': forms.HiddenInput(),
+            'board_id': forms.HiddenInput(),
         }
     
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.is_default = False
+        if self.instance and self.instance.rate is None:
+            try:
+                dr = DefaultRoleRate.objects.get(role_id=self.instance.role_id)
+                if dr.default_rate is not None:
+                    self.initial['rate'] = dr.default_rate
+                    existing_classes = self.fields['rate'].widget.attrs.get('class', '')
+                    self.is_default = True
+            except DefaultRoleRate.DoesNotExist:
+                pass
+
     def clean_rate(self):
         data = self.cleaned_data.get('rate')
         if data == '':
@@ -169,9 +206,8 @@ class ProjectRateForm(forms.ModelForm):
 
 def save_rates(request, rates_formset, project_id, project_title, board_id, board_title):
     """
-    Проверяет и сохраняет ставки для проекта.
-    Если все поля заполнены, сохраняет formset и возвращает redirect с сообщением об успехе.
-    Если хотя бы одно поле не заполнено или форма не валидна – возвращает redirect с сообщением об ошибке.
+    Валидирует и сохраняет ставки для проекта. Если все поля заполнены, сохраняет formset и перенаправляет с сообщением об успехе.
+    Если какие-либо ставки не заполнены или форма не валидна, возвращает redirect с сообщением об ошибке.
     """
     if rates_formset.is_valid():
         all_filled = all(form.cleaned_data.get('rate') not in (None, '') for form in rates_formset)
@@ -182,7 +218,7 @@ def save_rates(request, rates_formset, project_id, project_title, board_id, boar
             messages.error(request, "Заполните ставки для всех ролей перед сохранением.")
     else:
         messages.error(request, "Проверьте введённые данные.")
-
+    
     params = {
         'project_id': project_id,
         'project_title': project_title,

@@ -93,4 +93,14 @@
 </body>
 </html>
 
+<script>
+  document.querySelectorAll('input.default-value').forEach(function(input) {
+      input.addEventListener('focus', function() {
+          input.classList.remove('default-value');
+      });
+  });
 
+  document.querySelectorAll('input.default-rate').forEach(function(input) {
+    color: gray;
+  });
+</script>

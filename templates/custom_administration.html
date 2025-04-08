@@ -113,40 +113,5 @@
         {% endfor %}
     </tbody>
 </table>
-<hr>
-<p class="fs-2">Стандартные ставки для ролей</p>
-<form method="post">
-  {% csrf_token %}
-  {{ default_rate_formset.management_form }}
-
-  <table class="table align-middle">
-    <thead>
-      <tr>
-        <th>ID роли</th>
-        <th>Название роли</th>
-        <th>Стандартная ставка</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for form in default_rate_formset %}
-      <tr>
-        <td>{{ form.instance.role_id }}</td>
-        <td>{{ form.instance.role_name }}</td>
-        <td>
-          {{ form.id }} {# скрытое поле #}
-          <div class="input-group" style="width: 220px;">
-            {% render_field form.default_rate class="form-control" placeholder="Введите ставку" %}
-            <span class="input-group-text bg-white text-muted" style="pointer-events: none;">руб</span>
-          </div>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  <button type="submit" name="save_default_rates" class="btn btn-primary" style="width: 270px;">Сохранить стандартные ставки</button>
-</form>
-
-
 {% endblock %}
 

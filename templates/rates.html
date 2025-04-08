@@ -41,7 +41,7 @@
 
 {% if selected_project_id %}
 <p class="fs-3">Ставки для проекта "{{ selected_project_title }}" на доске "{{ selected_board_title }}"</p>
-<!-- Форма сохранения ставок; action обновляется динамически -->
+<!-- Форма сохранения ставок -->
 <form method="post" id="rates_form">
   {% csrf_token %}
   {{ rates_formset.management_form }}
@@ -54,72 +54,71 @@
     </thead>
     <tbody>
       {% for form in rates_formset %}
-        <tr>
-          <td>{{ form.instance.role_name }}</td>
-          <td>
-            {{ form.id }}
-            <!-- Отображаем скрытые поля, чтобы они попали в POST -->
-            {{ form.project_id }}
-            {{ form.board_id }}
-            <div class="input-group" style="width: 220px;">
+      <tr>
+        <td class="align-middle" style="min-width: 200px; max-width: 400px; width: 40%;">
+          {{ form.instance.role_name }}
+        </td>
+        <td style="position: relative; white-space: nowrap;">
+          {{ form.id }}
+          {{ form.project_id }}
+          {{ form.board_id }}
+          <div style="width: 220px; display: inline-block;">
+            <div class="input-group">
               {% render_field form.rate class="form-control" placeholder="Введите ставку" %}
               <span class="input-group-text bg-white text-muted" style="pointer-events: none;">руб</span>
             </div>
-          </td>
-        </tr>
+          </div>
+          {% if form.is_default %}
+            <span class="text-muted" style="margin-left: 8px;">
+              (ставка взята по умолчанию, не сохранена)
+            </span>
+          {% endif %}
+        </td>
+      </tr>
       {% endfor %}
+      
+
     </tbody>
   </table>
   <button type="submit" class="btn btn-success" id="saveRatesButton" style="width: 220px" name="save_rates">Сохранить ставки</button>
 </form>
+<hr>
+<p class="fs-2">Стандартные ставки для ролей</p>
+<form method="post">
+  {% csrf_token %}
+  {{ default_rate_formset.management_form }}
+
+  <table class="table align-middle">
+    <thead>
+      <tr>
+        <th>ID роли</th>
+        <th>Название роли</th>
+        <th>Стандартная ставка</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for form in default_rate_formset %}
+      <tr>
+        <td>{{ form.instance.role_id }}</td>
+        <td>{{ form.instance.role_name }}</td>
+        <td>
+          {{ form.id }}
+          <div class="input-group" style="width: 220px;">
+            {% render_field form.default_rate class="form-control" placeholder="Введите ставку" %}
+            <span class="input-group-text bg-white text-muted" style="pointer-events: none;">руб</span>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <button type="submit" name="save_default_rates" class="btn btn-primary" style="width: 270px;">Сохранить стандартные ставки</button>
+</form>
+
 {% endif %}
 
 <script>
-  // Функция обновляет action формы сохранения ставок
-  function updateRatesFormAction() {
-    const projectSelect = document.getElementById('project_id');
-    const boardSelect = document.getElementById('board_id');
-    const selectedProjectId = projectSelect.value;
-    const selectedProjectTitle = projectSelect.options[projectSelect.selectedIndex].text;
-    const selectedBoardId = boardSelect.value;
-    const selectedBoardTitle = boardSelect.options[boardSelect.selectedIndex].text;
-    const ratesForm = document.getElementById('rates_form');
-    const params = new URLSearchParams({
-      project_id: selectedProjectId,
-      project_title: selectedProjectTitle,
-      board_id: selectedBoardId,
-      board_title: selectedBoardTitle
-    });
-    ratesForm.action = `/rates/?${params.toString()}`;
-  }
-
-  // Обновление скрытых полей в форме ставок
-  function updateHiddenFields() {
-    const projectSelect = document.getElementById('project_id');
-    const boardSelect = document.getElementById('board_id');
-    const newProjectId = projectSelect.value;
-    const newBoardId = boardSelect.value;
-    // Обновляем все скрытые поля project_id и board_id в formset
-    document.querySelectorAll('input[name$="-project_id"]').forEach(input => {
-      input.value = newProjectId;
-    });
-    document.querySelectorAll('input[name$="-board_id"]').forEach(input => {
-      input.value = newBoardId;
-    });
-  }
-
-  // Проверка доступности кнопки сохранения
-  function checkSaveButton() {
-    const boardSelect = document.getElementById('board_id');
-    const saveButton = document.getElementById('saveRatesButton');
-    if (!boardSelect.value || boardSelect.options[boardSelect.selectedIndex].text.includes("Нет досок")) {
-      saveButton.disabled = true;
-    } else {
-      saveButton.disabled = false;
-    }
-  }
-
-  // При смене проекта: обновляем доски, скрытые поля и action формы
+  // При выборе проекта выполняется AJAX-запрос для получения досок и затем перезагружается страница
   document.getElementById('project_id').addEventListener('change', function() {
     const selectedProjectId = this.value;
     fetch(`/get_boards/?space_id=${selectedProjectId}`)
@@ -143,24 +142,15 @@
           option.text = '-- Нет досок --';
           boardSelect.appendChild(option);
         }
-        updateHiddenFields();
-        updateRatesFormAction();
-        checkSaveButton();
+        document.getElementById('project_select_form').submit();
       });
   });
 
-  // При смене доски обновляем скрытые поля и action формы
   document.getElementById('board_id').addEventListener('change', function() {
-    updateHiddenFields();
-    updateRatesFormAction();
-    checkSaveButton();
+    document.getElementById('project_select_form').submit();
   });
-
-  // Обновляем action формы при загрузке страницы
+  
   document.addEventListener('DOMContentLoaded', function() {
-    updateHiddenFields();
-    updateRatesFormAction();
-    checkSaveButton();
   });
 </script>
 {% endblock %}
