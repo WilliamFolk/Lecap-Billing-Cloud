@@ -175,7 +175,7 @@ def rates_view(request):
 
 class ProjectRateForm(forms.ModelForm):
     rate = forms.IntegerField(required=False, widget=forms.NumberInput(), label="Почасовая ставка")
-    
+
     class Meta:
         model = ProjectRate
         fields = ('id', 'rate', 'project_id', 'board_id')
@@ -184,7 +184,7 @@ class ProjectRateForm(forms.ModelForm):
             'project_id': forms.HiddenInput(),
             'board_id': forms.HiddenInput(),
         }
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.is_default = False
@@ -193,10 +193,14 @@ class ProjectRateForm(forms.ModelForm):
                 dr = DefaultRoleRate.objects.get(role_id=self.instance.role_id)
                 if dr.default_rate is not None:
                     self.initial['rate'] = dr.default_rate
-                    existing_classes = self.fields['rate'].widget.attrs.get('class', '')
                     self.is_default = True
             except DefaultRoleRate.DoesNotExist:
                 pass
+
+    def has_changed(self):
+        if getattr(self, 'is_default', False):
+            return True
+        return super().has_changed()
 
     def clean_rate(self):
         data = self.cleaned_data.get('rate')
