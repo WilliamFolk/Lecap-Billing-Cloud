@@ -345,25 +345,6 @@ def custom_administration(request):
     settings_form = AdminSettingsForm(instance=admin_settings)
     user_form = CustomUserForm()
     
-    kaiten_api_down = False  # Флаг для отслеживания ошибки подключения к Kaiten
-
-    # Синхронизация с API только для GET-запроса
-    if request.method == "GET" and admin_settings.url_domain_value_id and admin_settings.api_auth_key:
-        default_roles = fetch_kaiten_roles(admin_settings.url_domain_value_id, admin_settings.api_auth_key)
-        if not default_roles:
-            kaiten_api_down = True
-        else:
-            api_role_ids = {str(role.get('id')) for role in default_roles}
-            DefaultRoleRate.objects.exclude(role_id__in=api_role_ids).delete()
-            for role in default_roles:
-                DefaultRoleRate.objects.get_or_create(
-                    role_id=str(role.get('id')),
-                    defaults={'role_name': role.get('name')}
-                )
-    # Вывод сообщения об ошибке, если API недоступен
-    if kaiten_api_down:
-        messages.error(request, "Сервер Kaiten недоступен. Пожалуйста, повторите попытку позже.")
-
     default_rate_formset = DefaultRoleRateFormSet(queryset=DefaultRoleRate.objects.all())
     
     if request.method == "POST":
