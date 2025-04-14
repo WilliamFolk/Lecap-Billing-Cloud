@@ -1,17 +1,19 @@
 import requests
 import io
+import logging
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import get_user_model
 from django.contrib import messages
 from django.shortcuts import render, redirect
 from django.conf import settings
+from django.utils import timezone
 from django import forms
 from accounts.models import AdminSettings
 from .models import  ProjectRate, DefaultRoleRate
 from accounts.forms import AdminSettingsForm, CustomUserForm
 from LecapProject.kaiten_api import fetch_kaiten_roles, fetch_kaiten_projects, fetch_kaiten_cards, fetch_kaiten_time_logs, fetch_kaiten_boards
 from django.forms import modelformset_factory, ModelForm, HiddenInput
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 from django.http import HttpResponse, JsonResponse
 from docx import Document
@@ -26,6 +28,8 @@ from django.db.models import CharField
 from urllib.parse import urlencode
 from docx.enum.table import WD_ALIGN_VERTICAL
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+logger = logging.getLogger('kaiten')
 
 User = get_user_model()
 
@@ -86,10 +90,7 @@ def check_board_rates(board, project_id, roles):
 
 @login_required
 def get_boards(request):
-    """
-    Получает список досок для проекта (space_id) и для отчетов аннотирует каждую доску по наличию ставок.
-    Если для доски найдены только дефолтные ставки для каких-то ролей, к её заголовку добавляется суффикс "(автоставки)".
-    """
+    kaiten_api_down = False
     space_id = request.GET.get('space_id')
     for_report = request.GET.get('for_report') == "1"
     admin_settings, _ = AdminSettings.objects.get_or_create(pk=1)
@@ -97,38 +98,63 @@ def get_boards(request):
     bearer_key = admin_settings.api_auth_key
 
     boards = fetch_kaiten_boards(domain, bearer_key, space_id)
+    if not boards:
+        kaiten_api_down = True
+
     if for_report:
         roles = fetch_kaiten_roles(domain, bearer_key)
+        if not roles:
+            kaiten_api_down = True
         for board in boards:
             valid, auto_used = check_board_rates(board, space_id, roles)
             board["has_rates"] = valid
             if valid and auto_used:
                 board["title"] += " (автоставки)"
-    return JsonResponse({"boards": boards})
+    
+    # Для AJAX‑ответа можно вернуть ошибку прямо в JSON
+    error_message = ""
+    if kaiten_api_down:
+        error_message = "Сервер Kaiten недоступен. Пожалуйста, повторите попытку позже."
+    return JsonResponse({"boards": boards, "error": error_message})
 
 
 @login_required
 def rates_view(request):
-    # Получение настроек и ключей для API
     admin_settings, _ = AdminSettings.objects.get_or_create(pk=1)
     domain = admin_settings.url_domain_value_id
     bearer_key = admin_settings.api_auth_key
 
-    # Новый блок синхронизации ролей с Kaiten API для таблицы DefaultRoleRate
+    # Флаг для ошибки подключения к API
+    kaiten_api_down = False
+
     if domain and bearer_key:
+        # Получение дефолтных ролей
         default_roles = fetch_kaiten_roles(domain, bearer_key)
-        api_role_ids = {str(role.get('id')) for role in default_roles}
-        # Удаляет записи для ролей, которых уже нет в API
-        DefaultRoleRate.objects.exclude(role_id__in=api_role_ids).delete()
-        # Для каждой роли из API создаёт запись, если её ещё нет
-        for role in default_roles:
-            DefaultRoleRate.objects.get_or_create(
-                role_id=str(role.get('id')),
-                defaults={'role_name': role.get('name')}
-            )
+        if not default_roles:
+            kaiten_api_down = True
+        else:
+            api_role_ids = {str(role.get('id')) for role in default_roles}
+            for role in default_roles:
+                obj, created = DefaultRoleRate.objects.get_or_create(
+                    role_id=str(role.get('id')),
+                    defaults={'role_name': role.get('name')}
+                )
+                if not created and obj.role_name != role.get('name'):
+                    obj.role_name = role.get('name')
+                obj.last_sync = timezone.now()
+                obj.save()
+            DefaultRoleRate.objects.filter(last_sync__lt=timezone.now() - timedelta(days=7))\
+                .exclude(role_id__in=api_role_ids)\
+                .delete()
 
-    projects = fetch_kaiten_projects(domain, bearer_key)
+        # Получение проектов
+        projects = fetch_kaiten_projects(domain, bearer_key)
+        if not projects:
+            kaiten_api_down = True
+    else:
+        projects = []
 
+    # Выбор проекта и доски
     project_id = request.GET.get('project_id')
     project_title = request.GET.get('project_title', '')
     board_id = request.GET.get('board_id')
@@ -139,7 +165,6 @@ def rates_view(request):
             if str(project['id']) == str(project_id):
                 project_title = project['title']
                 break
-
     if not project_id and projects:
         project_id = str(projects[0]['id'])
         project_title = projects[0]['title']
@@ -147,24 +172,25 @@ def rates_view(request):
     boards = []
     if project_id:
         boards = fetch_kaiten_boards(domain, bearer_key, project_id)
+        if not boards:
+            kaiten_api_down = True
         if boards and not board_id:
             board_id = boards[0]['id']
             board_title = boards[0]['title']
 
-    # Формирование formset для ставок проекта
+    # Работа с формсетом ставок
     ProjectRateFormSet = modelformset_factory(ProjectRate, form=ProjectRateForm, extra=0)
     rates_formset = None
 
     if project_id and board_id:
         roles = fetch_kaiten_roles(domain, bearer_key)
-        current_role_ids = [str(role.get('id')) for role in roles]
+        if not roles:
+            kaiten_api_down = True
+        current_role_ids = [str(role.get("id")) for role in roles]
 
-        ProjectRate.objects.filter(project_id=project_id, board_id=board_id)\
-            .exclude(role_id__in=current_role_ids).delete()
-
-        # Если для роли ставка не задана, оставляет rate равным None.
+        # Обновление/создание объектов ProjectRate
         for role in roles:
-            ProjectRate.objects.get_or_create(
+            obj, created = ProjectRate.objects.get_or_create(
                 project_id=project_id,
                 board_id=board_id,
                 role_id=str(role.get('id')),
@@ -175,20 +201,30 @@ def rates_view(request):
                     'rate': None
                 }
             )
+            obj.last_sync = timezone.now()
+            if obj.project_title != project_title or obj.board_title != board_title or obj.role_name != role.get('name'):
+                obj.project_title = project_title
+                obj.board_title = board_title
+                obj.role_name = role.get('name')
+            obj.save()
+            
+        ProjectRate.objects.filter(project_id=project_id, board_id=board_id)\
+            .exclude(role_id__in=current_role_ids)\
+            .filter(last_sync__lt=timezone.now() - timedelta(days=7))\
+            .delete()
+
         rates_formset = ProjectRateFormSet(queryset=ProjectRate.objects.filter(project_id=project_id, board_id=board_id))
 
-    # Обработка POST-запроса
+    if kaiten_api_down:
+        messages.error(request, "Сервер Kaiten недоступен. Пожалуйста, повторите попытку позже.")
+
     if request.method == "POST":
         if 'save_default_rates' in request.POST:
             default_rate_formset = DefaultRoleRateFormSet(request.POST, queryset=DefaultRoleRate.objects.all())
             if default_rate_formset.is_valid():
-                changed = False
-                for form in default_rate_formset.forms:
-                    if form.has_changed():
-                        changed = True
+                changed = any(form.has_changed() for form in default_rate_formset.forms)
                 if changed:
-                    instances = default_rate_formset.save(commit=False)
-                    for instance in instances:
+                    for instance in default_rate_formset.save(commit=False):
                         instance.save()
                 messages.success(request, "Стандартные ставки сохранены.")
             else:
@@ -257,7 +293,7 @@ class ProjectRateForm(forms.ModelForm):
 
 def save_rates(request, rates_formset, project_id, project_title, board_id, board_title):
     """
-    Валидирует и сохраняет ставки для проекта. Если все поля заполнены, сохраняет formset и перенаправляет с сообщением об успехе.
+    Валидирует и сохраняет ставки для проекта. Если все поля заполнены, сохраняет formset и перенаправляет с сообщениет об успехе.
     Если какие-либо ставки не заполнены или форма не валидна, возвращает redirect с сообщением об ошибке.
     """
     if rates_formset.is_valid():
@@ -303,24 +339,31 @@ def replace_placeholder_in_paragraph(paragraph, placeholder, replacement):
 def custom_administration(request):
     if not request.user.is_staff:
         messages.error(request, "У вас нет доступа к странице администрирования, запросите права у администратора.")
-        return redirect(request.META.get('HTTP_REFERER', 'rates'))  # или другая безопасная точка входа
+        return redirect(request.META.get('HTTP_REFERER', 'rates'))
+        
     admin_settings, _ = AdminSettings.objects.get_or_create(pk=1)
     settings_form = AdminSettingsForm(instance=admin_settings)
     user_form = CustomUserForm()
     
-    # Запускает синхронизацию с API только для GET-запроса
+    kaiten_api_down = False  # Флаг для отслеживания ошибки подключения к Kaiten
+
+    # Синхронизация с API только для GET-запроса
     if request.method == "GET" and admin_settings.url_domain_value_id and admin_settings.api_auth_key:
         default_roles = fetch_kaiten_roles(admin_settings.url_domain_value_id, admin_settings.api_auth_key)
-        api_role_ids = {str(role.get('id')) for role in default_roles}
-        DefaultRoleRate.objects.exclude(role_id__in=api_role_ids).delete()
-        
-        for role in default_roles:
-            DefaultRoleRate.objects.get_or_create(
-                role_id=str(role.get('id')),
-                defaults={'role_name': role.get('name')}
-            )
-    
-    # formset для дефолтных ставок
+        if not default_roles:
+            kaiten_api_down = True
+        else:
+            api_role_ids = {str(role.get('id')) for role in default_roles}
+            DefaultRoleRate.objects.exclude(role_id__in=api_role_ids).delete()
+            for role in default_roles:
+                DefaultRoleRate.objects.get_or_create(
+                    role_id=str(role.get('id')),
+                    defaults={'role_name': role.get('name')}
+                )
+    # Вывод сообщения об ошибке, если API недоступен
+    if kaiten_api_down:
+        messages.error(request, "Сервер Kaiten недоступен. Пожалуйста, повторите попытку позже.")
+
     default_rate_formset = DefaultRoleRateFormSet(queryset=DefaultRoleRate.objects.all())
     
     if request.method == "POST":
@@ -345,13 +388,6 @@ def custom_administration(request):
             else:
                 for field, errors in user_form.errors.items():
                     for error in errors:
-                        """ERROR_TRANSLATIONS = {
-                            "This field is required.": "Это поле обязательно для заполнения.",
-                            "Enter a valid email address.": "Введите корректный адрес электронной почты.",
-                            "A user with that email already exists.": "Пользователь с такой почтой уже зарегистрирован.",
-                            "This password is too short. It must contain at least 8 characters.": "Пароль слишком короткий. Минимум 8 символов.",
-                        }
-                        translated = ERROR_TRANSLATIONS.get(error, error)"""
                         messages.error(request, f"{field.capitalize()}: {error}")
                 return redirect('custom_administration')
         elif 'save_default_rates' in request.POST:
@@ -361,10 +397,8 @@ def custom_administration(request):
                 messages.success(request, "Стандартные ставки сохранены.")
                 return redirect('custom_administration')
             else:
-                # print('Ставки: ', default_rate_formset)
                 messages.error(request, "Проверьте введённые данные в стандартных ставках.")
 
-    
     context = {
         'settings_form': settings_form,
         'user_form': user_form,
@@ -375,19 +409,24 @@ def custom_administration(request):
 
 @login_required
 def reports_view(request):
-    """
-    Функция отображения вкладки "Отчёты". Для каждого проекта проверяет наличие хотя бы одной доски,
-    для которой удовлетворены условия ставок (либо кастомная, либо дефолтная с заполненным значением).
-    """
+    kaiten_api_down = False
     admin_settings, _ = AdminSettings.objects.get_or_create(pk=1)
     domain = admin_settings.url_domain_value_id
     bearer_key = admin_settings.api_auth_key
 
     projects = fetch_kaiten_projects(domain, bearer_key)
+    if not projects:
+        kaiten_api_down = True
+
     roles = fetch_kaiten_roles(domain, bearer_key)
+    if not roles:
+        kaiten_api_down = True
+
     for project in projects:
         project_id = str(project.get('id'))
         boards = fetch_kaiten_boards(domain, bearer_key, project_id)
+        if not boards:
+            kaiten_api_down = True
         valid_board_exists = False
         for board in boards:
             valid, auto_used = check_board_rates(board, project_id, roles)
@@ -423,6 +462,9 @@ def reports_view(request):
                 messages.error(request, "Выбран некорректный шаблон.")
                 return redirect('reports')
             return generate_report(request, selected_project, template_instance, start_date, end_date, board_id)
+
+    if kaiten_api_down:
+        messages.error(request, "Сервер Kaiten недоступен. Пожалуйста, повторите попытку позже.")
 
     context = {
         'projects': projects,
