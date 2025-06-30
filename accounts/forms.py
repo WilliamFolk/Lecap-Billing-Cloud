@@ -16,13 +16,27 @@ class AdminSettingsForm(forms.ModelForm):
         ]
 
 class CustomUserForm(forms.ModelForm):
-    password = forms.CharField(widget=forms.PasswordInput, required=False, label="Пароль")
+    password = forms.CharField(
+        widget=forms.PasswordInput,
+        required=False,
+        label="Пароль",
+        help_text="Оставьте пустым, чтобы не менять пароль"
+    )
     class Meta:
         model = User
         fields = ['email', 'first_name', 'patronymic', 'last_name', 'is_staff'] #'is_superuser'
         labels = {
-            'is_staff': 'Администратор',  # Замена стандартное название поля
+            'is_staff': 'Администратор',  # Замена стандартного названия поля
         }
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        pwd = self.cleaned_data.get('password')
+        if pwd:
+            user.set_password(pwd)
+        if commit:
+            user.save()
+        return user
 
 class CustomUserCreationForm(UserCreationForm):
     class Meta:

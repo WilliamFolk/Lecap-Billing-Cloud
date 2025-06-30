@@ -2,6 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.contrib.auth import get_user_model, login
+from django.contrib.auth import update_session_auth_hash
 from .forms import CustomUserForm, CustomUserCreationForm
 from LecapProject.views import custom_administration
 User = get_user_model()
@@ -22,6 +23,9 @@ def edit_user(request, user_id):
                 messages.error(request, "Вы не можете снять с себя права администратора.")
             else:
                 form.save()
+                # Если админ сменил себе пароль — обновляем сессию, чтобы он не вышел
+                if form.cleaned_data.get('password') and request.user == user_instance:
+                    update_session_auth_hash(request, user_instance)
                 messages.success(request, "Пользователь успешно обновлен.")
                 return redirect('custom_administration')
     else:

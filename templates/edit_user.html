@@ -24,6 +24,12 @@
         <div class="mb-3">
           {% render_field form.last_name placeholder="Фамилия" class="form-control" %}
         </div>
+        <div class="mb-3">
+          {% render_field form.password placeholder="Новый пароль" class="form-control" %}
+          {% if form.password.help_text %}
+            <div class="form-text">{{ form.password.help_text }}</div>
+          {% endif %}
+        </div>
 
         <div class="form-check mb-3">
           {% render_field form.is_staff class="form-check-input" id="is_staff" %}
