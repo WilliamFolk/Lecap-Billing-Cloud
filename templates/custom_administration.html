@@ -1,117 +1,115 @@
 {% extends "base.html" %}
-
+{% load widget_tweaks %}
+{% load widget_tweaks kaiten_extras %}
 {% block content %}
 <head>
-    <style>
-        body{
-          margin-bottom: 100px;
-        }
-      </style>
+  <style>
+    body { margin-bottom: 100px; }
+  </style>
 </head>
 
-<p class="fs-1">Кастомное администрирование</p>
+<h1 class="mb-4">Кастомное администрирование</h1>
+
+<!-- 1. Глобальные настройки -->
 <hr>
-<!--
-<form>
-  <h2>Глобальные настройки</h2>
+<h2 class="fs-2">Глобальные настройки</h2>
+<form method="post" class="mb-5">
   {% csrf_token %}
-  {{ settings_form.as_p }}
-    <button type="submit" name="update_settings" class="btn btn-primary">Сохранить настройки</button>
-</form>
--->
-
-{% load widget_tweaks %}
- <p class="fs-2">Глобальные настройки</p>
-<form method="post">
-    {% csrf_token %}
-
-<div class="mb-3 d-flex align-items-center">
-  <label for="f1" class="form-label me-3 text-start" style="width: 270px;">Доменное имя компании</label>
-  <div style="width: 33%;">
-    {% render_field settings_form.url_domain_value_id placeholder="mycompany" class="form-control" id="f1" %}
+  <div class="mb-3 d-flex align-items-center">
+    <label class="form-label me-3" style="width: 270px;">Доменное имя компании</label>
+    {% render_field settings_form.url_domain_value_id class="form-control w-50" placeholder="mycompany" %}
   </div>
-</div>
-
-<div class="mb-3 d-flex align-items-center">
-  <label for="f2" class="form-label me-3 text-start" style="width: 270px;">ID кастомного поля Billing</label>
-  <div style="width: 33%;">
-    {% render_field settings_form.billing_custom_field_id placeholder="123456" class="form-control" id="f2" %}
+  <div class="mb-3 d-flex align-items-center">
+    <label class="form-label me-3" style="width: 270px;">ID кастомного поля Billing</label>
+    {% render_field settings_form.billing_custom_field_id class="form-control w-50" placeholder="123456" %}
   </div>
-</div>
-
-<div class="mb-3 d-flex align-items-center">
-  <label for="f3" class="form-label me-3 text-start" style="width: 270px;">ID значения кастомного поля Billing</label>
-  <div style="width: 33%;">
-    {% render_field settings_form.billing_custom_field_value_id placeholder="123456" class="form-control" id="f3" %}
+  <div class="mb-3 d-flex align-items-center">
+    <label class="form-label me-3" style="width: 270px;">ID значения поля Billing</label>
+    {% render_field settings_form.billing_custom_field_value_id class="form-control w-50" placeholder="123456" %}
   </div>
-</div>
-
-<div class="mb-3 d-flex align-items-center">
-  <label for="f4" class="form-label me-3 text-start" style="width: 270px;">Ключ для авторизации в API</label>
-  <div style="width: 33%;">
-    {% render_field settings_form.api_auth_key placeholder="a1bc234d-567e-8901-f234-5g6hi78jk9l0" class="form-control" id="f4" %}
+  <div class="mb-3 d-flex align-items-center">
+    <label class="form-label me-3" style="width: 270px;">Ключ API Kaiten</label>
+    {% render_field settings_form.api_auth_key class="form-control w-50" placeholder="a1bc…jk9l0" %}
   </div>
-</div>
-    <button type="submit" name="update_settings" class="btn btn-primary" style = "width: 270px;">Сохранить настройки</button>
+  <button type="submit" name="update_settings" class="btn btn-primary">Сохранить настройки</button>
 </form>
 
-
+<!-- 2. Создать локального пользователя -->
 <hr>
-
-{% load widget_tweaks %}
-<p class="fs-2">Создать нового пользователя</p>
-<form method="post">
+<h2 class="fs-2">Создать нового пользователя</h2>
+<form method="post" class="mb-5">
   {% csrf_token %}
-    <div class="mb-3 col-4">
-      {% render_field user_form.email placeholder="Email" class="form-control" %}
-    </div> 
-    <div class="mb-3 col-4">
-      {% render_field user_form.first_name placeholder="Имя" class="form-control" %}
-    </div>
-    <div class="mb-3 col-4">
-      {% render_field user_form.patronymic placeholder="Отчество" class="form-control" %}
-    </div>
-    <div class="mb-3 col-4">
-      {% render_field user_form.last_name placeholder="Фамилия" class="form-control" %}
-    </div>
-    <div class="mb-3 col-4">
-      {% render_field user_form.password placeholder="Пароль" class="form-control" %}
-    </div>
-  <button type="submit" name="create_user" class="btn btn-success" style ="width: 270px;">Создать пользователя</button>
+  <div class="row g-3">
+    <div class="col-md-4">{% render_field user_form.email class="form-control" placeholder="Email" %}</div>
+    <div class="col-md-4">{% render_field user_form.first_name class="form-control" placeholder="Имя" %}</div>
+    <div class="col-md-4">{% render_field user_form.patronymic class="form-control" placeholder="Отчество" %}</div>
+    <div class="col-md-4">{% render_field user_form.last_name class="form-control" placeholder="Фамилия" %}</div>
+    <div class="col-md-4">{% render_field user_form.password class="form-control" placeholder="Пароль" %}</div>
+  </div>
+  <button type="submit" name="create_user" class="btn btn-success mt-3">Создать пользователя</button>
 </form>
 
-
-
+<!-- 3. Список локальных пользователей -->
 <hr>
-<p class="fs-2">Список пользователей</p>
-<table class="table table-bordered">
-    <thead>
-        <tr>
-            <th>ID</th>
-            <th>Email</th>
-            <th>Имя</th>
-            <th>Отчество</th>
-            <th>Фамилия</th>
-            <th>Администратор</th>
-            <th>Действия</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for user in users %}
-        <tr>
-            <td>{{ user.id }}</td>
-            <td>{{ user.email }}</td>
-            <td>{{ user.first_name }}</td>
-            <td>{% if user.patronymic %}{{ user.patronymic }}{% else %}{% endif %}</td>
-            <td>{{ user.last_name }}</td>
-            <td>{% if user.is_staff %}Да{% else %}Нет{% endif %}</td>
-            <td>
-                <a href="{% url 'edit_user' user.id %}" class="btn btn-sm btn-warning">Редактировать</a>
-                <a href="{% url 'delete_user' user.id %}" class="btn btn-sm btn-danger">Удалить</a>
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
+<h2 class="fs-2">Список пользователей</h2>
+<table class="table table-bordered mb-5">
+  <thead>
+    <tr>
+      <th>ID</th><th>Email</th><th>Имя</th><th>Отчество</th><th>Фамилия</th><th>Админ</th><th>Действия</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for user in users %}
+      <tr>
+        <td>{{ user.id }}</td>
+        <td>{{ user.email }}</td>
+        <td>{{ user.first_name }}</td>
+        <td>{{ user.patronymic|default:"—" }}</td>
+        <td>{{ user.last_name }}</td>
+        <td>{{ user.is_staff|yesno:"Да,Нет" }}</td>
+        <td>
+          <a href="{% url 'edit_user' user.id %}" class="btn btn-sm btn-warning me-2">Редактировать</a>
+          <a href="{% url 'delete_user' user.id %}" class="btn btn-sm btn-danger me-2">Удалить</a>
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
 </table>
-{% endblock %}
 
+<!-- 4. Назначение ролей пользователям Kaiten -->
+<hr>
+<h2 class="fs-2">Назначение ролей Kaiten-пользователям</h2>
+<table class="table table-bordered">
+  <thead>
+    <tr><th>Email Kaiten</th><th>Роль</th></tr>
+  </thead>
+  <tbody>
+    {% for u in kaiten_users %}
+      <tr>
+        <td style="vertical-align: middle;">{{ u.email }}</td>
+        <td>
+          <form method="post" class="d-flex align-items-center">
+            {% csrf_token %}
+            <input type="hidden" name="kaiten_user_id" value="{{ u.id }}">
+            {% with overrides|get_item:u.id|stringformat:"s" as current_override %}
+              <select name="role_id" class="form-select me-3" style="max-width:300px;">
+                <option value="" {% if not current_override %}selected{% endif %}>-- Роль в Kaiten --</option>
+                {% for role in kaiten_roles %}
+                  <option value="{{ role.id }}"
+                    {% if current_override == role.id|stringformat:"s" %}selected{% endif %}>
+                    {{ role.name }}
+                  </option>
+                {% endfor %}
+              </select>
+            {% endwith %}
+            <button type="submit" name="save_kaiten_user_role" class="btn btn-primary btn-sm">
+              Сохранить
+            </button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% endblock %}

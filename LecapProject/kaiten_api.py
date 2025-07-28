@@ -130,3 +130,40 @@ def fetch_kaiten_projects(domain, bearer_key):
     except Exception as e:
         logger.error(f"Ошибка при получении проектов: {e}", exc_info=True)
         return []
+
+def fetch_kaiten_users(domain, bearer_key, timeout=10):
+    url = f"https://{domain}.kaiten.ru/api/latest/users"
+    headers = {
+        "Authorization": f"Bearer {bearer_key}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    response = requests.get(url, headers=headers, timeout=timeout)
+    response.raise_for_status()
+    data = response.json()
+    if isinstance(data, dict):
+        return data.get("users", [])
+    elif isinstance(data, list):
+        return data
+    else:
+        return []
+
+def fetch_kaiten_board_roles(domain, bearer_key, space_id, board_id):
+    """
+    Получение списка ролей (roles) конкретной доски в проекте (space).
+    Каждый элемент — словарь с 'id' и 'name'.
+    """
+    url = f"https://{domain}.kaiten.ru/api/latest/spaces/{space_id}/boards/{board_id}/roles"
+    headers = {
+        "Authorization": f"Bearer {bearer_key}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        resp.raise_for_status()
+        roles = resp.json()
+        return roles  # список {"id": ..., "name": ...}
+    except Exception as e:
+        logger.error(f"Ошибка при получении ролей доски {board_id}: {e}", exc_info=True)
+        return []

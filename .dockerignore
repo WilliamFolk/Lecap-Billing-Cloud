@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.log
+*.swp
+*.tmp
+.env
+.git
+media/
+docxTemplate/savedFiles/

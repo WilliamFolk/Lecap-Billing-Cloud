@@ -27,7 +27,13 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     last_name = models.CharField("Фамилия", max_length=30)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
-
+    # id роли из Kaiten, выбранная админом (если пусто — берется из Kaiten API)
+    override_role_id = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        verbose_name="-- Роль в Kaiten --"
+    )
     objects = CustomUserManager()
 
     USERNAME_FIELD = 'email'
@@ -60,3 +66,13 @@ class AdminSettings(models.Model):
 
     def __str__(self):
         return "Настройки администратора"
+
+class KaitenUserRoleOverride(models.Model):
+    kaiten_user_id   = models.CharField(max_length=50, unique=True)
+    email            = models.EmailField(max_length=254)
+    override_role_id = models.CharField(
+        max_length=50, blank=True, null=True, verbose_name="-- Роль в Kaiten --"
+    )
+
+    def __str__(self):
+        return f"{self.email} → {self.override_role_id or 'default'}"

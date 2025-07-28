@@ -7,7 +7,6 @@ from .forms import CustomUserForm, CustomUserCreationForm
 from LecapProject.views import custom_administration
 User = get_user_model()
 from django.contrib.auth.forms import AuthenticationForm
-
 # Доступ был только для суперпользователей, пока убрал
 # @user_passes_test(lambda u: u.is_superuser)
 @login_required
