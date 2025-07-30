@@ -106,6 +106,13 @@ def get_boards(request):
         kaiten_api_down = True
 
     if for_report:
+        global_roles = fetch_kaiten_roles(domain, bearer_key)
+        for role in global_roles:
+            DefaultRoleRate.objects.get_or_create(
+                role_id=str(role.get('id')),
+                defaults={'role_name': role.get('name')}
+            )
+
         for board in boards:
             board_roles = fetch_kaiten_board_roles(domain, bearer_key, space_id, board['id'])
             if not board_roles:
@@ -158,21 +165,22 @@ def rates_view(request):
             board_title = boards[0]['title']
 
     if domain and bearer_key and project_id and board_id:
-        board_roles = fetch_kaiten_board_roles(domain, bearer_key, project_id, board_id)
-        if not board_roles:
+        global_roles = fetch_kaiten_roles(domain, bearer_key)
+        if not global_roles:
             kaiten_api_down = True
         else:
-            api_role_ids = {str(role.get('id')) for role in board_roles}
-            for role in board_roles:
+            for role in global_roles:
+                role_id = str(role.get('id'))
+                role_name = role.get('name')
                 ProjectRate.objects.get_or_create(
                     project_id=project_id,
                     board_id=board_id,
-                    role_id=str(role.get('id')),
-                    defaults={'role_name': role.get('name')}
+                    role_id=role_id,
+                    defaults={'role_name': role_name}
                 )
                 DefaultRoleRate.objects.get_or_create(
-                    role_id=str(role.get('id')),
-                    defaults={'role_name': role.get('name')}
+                    role_id=role_id,
+                    defaults={'role_name': role_name}
                 )
             #DefaultRoleRate.objects.exclude(role_id__in=api_role_ids).delete()
 
