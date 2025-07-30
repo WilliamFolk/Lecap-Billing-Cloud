@@ -59,7 +59,7 @@ def check_board_rates(board, project_id, roles):
     """
     board_valid = True
     auto_used = False
-    board_id = board.get("id")
+    board_id = str(board.get("id"))
     for role in roles:
         role_id = str(role.get("id"))
         try:
