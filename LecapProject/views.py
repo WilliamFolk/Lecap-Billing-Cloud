@@ -31,6 +31,7 @@ from urllib.parse import urlencode
 from docx.enum.table import WD_ALIGN_VERTICAL
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from .kaiten_api import fetch_kaiten_roles, fetch_kaiten_users
+from django.urls import reverse
 
 logger = logging.getLogger('kaiten')
 
@@ -105,11 +106,11 @@ def get_boards(request):
         kaiten_api_down = True
 
     if for_report:
-        roles = fetch_kaiten_roles(domain, bearer_key)
-        if not roles:
-            kaiten_api_down = True
         for board in boards:
-            valid, auto_used = check_board_rates(board, space_id, roles)
+            board_roles = fetch_kaiten_board_roles(domain, bearer_key, space_id, board['id'])
+            if not board_roles:
+                kaiten_api_down = True
+            valid, auto_used = check_board_rates(board, space_id, board_roles)
             board["has_rates"] = valid
             if valid and auto_used:
                 board["title"] += " (автоставки)"
@@ -173,7 +174,7 @@ def rates_view(request):
                     role_id=str(role.get('id')),
                     defaults={'role_name': role.get('name')}
                 )
-            DefaultRoleRate.objects.exclude(role_id__in=api_role_ids).delete()
+            #DefaultRoleRate.objects.exclude(role_id__in=api_role_ids).delete()
 
     ProjectRateFormSet = modelformset_factory(ProjectRate, form=ProjectRateForm, extra=0)
     rates_formset = None
@@ -414,7 +415,8 @@ def reports_view(request):
                 boards = fetch_kaiten_boards(domain, bearer_key, pid)
                 valid = False
                 for board in boards:
-                    board_valid, _ = check_board_rates(board, pid, roles)
+                    board_roles = fetch_kaiten_board_roles(domain, bearer_key, pid, board['id'])
+                    board_valid, _ = check_board_rates(board, pid, board_roles)
                     if board_valid:
                         valid = True
                         break
