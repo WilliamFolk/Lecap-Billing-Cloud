@@ -213,9 +213,17 @@ def rates_view(request):
             }
             return redirect(f"{reverse('rates')}?{urlencode(params)}")
         else:
+            ProjectRateFormSet = modelformset_factory(ProjectRate, form=ProjectRateForm, extra=0)
+            bound_formset = ProjectRateFormSet(
+                request.POST,
+                queryset=ProjectRate.objects.filter(
+                    project_id=project_id,
+                    board_id=board_id
+                )
+            )
             return save_rates(
                 request,
-                rates_formset,
+                bound_formset,
                 project_id,
                 project_title,
                 board_id,
@@ -418,6 +426,11 @@ def reports_view(request):
         if not roles:
             kaiten_api_down = True
         else:
+            for role in roles:
+                DefaultRoleRate.objects.get_or_create(
+                    role_id=str(role.get('id')),
+                    defaults={'role_name': role.get('name')}
+                )
             for project in projects:
                 pid = str(project.get('id'))
                 boards = fetch_kaiten_boards(domain, bearer_key, pid)
