@@ -18,7 +18,7 @@ def fetch_kaiten_boards(domain, bearer_key, space_id):
          response.raise_for_status()
          boards = response.json()
          logger.info(f"Получено досок: {len(boards)} для пространства {space_id}")
-         return [{"id": board.get("id"), "title": board.get("title")} for board in boards]
+         return [{"id": str(board.get("id")), "title": board.get("title")} for board in boards]
     except Exception as e:
          logger.error(f"Ошибка при получении досок для пространства {space_id}: {e}", exc_info=True)
          return []
@@ -103,7 +103,11 @@ def fetch_kaiten_roles(domain, bearer_key):
         response.raise_for_status()
         roles = response.json()
         logger.debug(f"Ответ API по ролям: {roles}")
-        roles = [role for role in roles if str(role.get('id')) != "-1"]
+        roles = [
+            {"id": str(role.get("id")), "name": role.get("name")}
+            for role in response.json()
+            if str(role.get("id")) != "-1"
+        ]
         logger.info(f"Получено ролей (без id=-1): {len(roles)}")
         return roles
     except Exception as e:

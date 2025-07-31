@@ -68,7 +68,7 @@ def check_board_rates(board, project_id, roles):
                 board_id=board_id,
                 role_id=role_id
             )
-            if pr.rate is None:
+            if pr.rate is None: #TODO: Log errors
                 try:
                     dr = DefaultRoleRate.objects.get(role_id=role_id)
                     if dr.default_rate is not None:
@@ -436,7 +436,7 @@ def reports_view(request):
                 boards = fetch_kaiten_boards(domain, bearer_key, pid)
                 valid = False
                 for board in boards:
-                    board_roles = fetch_kaiten_board_roles(domain, bearer_key, pid, board['id'])
+                    board_roles = fetch_kaiten_board_roles(domain, bearer_key, pid, str(board['id']))
                     board_valid, _ = check_board_rates(board, pid, board_roles)
                     if board_valid:
                         valid = True

@@ -10,12 +10,12 @@
     <select name="project" id="project_id" class="form-select">
       <option value="">-- Выберите проект --</option>
       {% for project in projects %}
-        {% if project.has_rates %}
+        <!-- {% if project.has_rates %} -->
           <option value="{{ project.id }}">{{ project.title }}</option>
-        {% else %}
-          <option value="{{ project.id }}" disabled class="text-muted" title="У проекта нет ни одной доски с указанными ставками">
+        <!-- {% else %}
+            <option value="{{ project.id }}" disabled class="text-muted" title="У проекта нет ни одной доски с указанными ставками">
             {{ project.title }} (нет ставок)
-          </option>
+        </option> -->
         {% endif %}
       {% endfor %}
     </select>
