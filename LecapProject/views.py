@@ -75,10 +75,14 @@ def check_board_rates(board, project_id, roles):
                         auto_used = True
                     else:
                         board_valid = False
-                        break
+                        logger.debug(f"Board {board_id}: roles = {[r['id'] for r in roles]}")
+	                logger.debug(f"  role {role_id}: pr.rate = {getattr(pr, 'rate', None)}, dr.default_rate = {dr.default_rate}")
+			break
                 except DefaultRoleRate.DoesNotExist:
                     board_valid = False
-                    break
+                    logger.debug(f"Board {board_id}: roles = {[r['id'] for r in roles]}")
+	            logger.debug(f"  role {role_id}: pr.rate = {getattr(pr, 'rate', None)}, dr.default_rate = {dr.default_rate}")
+		    break
         except ProjectRate.DoesNotExist:
             try:
                 dr = DefaultRoleRate.objects.get(role_id=role_id)
@@ -86,10 +90,14 @@ def check_board_rates(board, project_id, roles):
                     auto_used = True
                 else:
                     board_valid = False
-                    break
+		    logger.debug(f"Board {board_id}: roles = {[r['id'] for r in roles]}")
+         	    logger.debug(f"  role {role_id}: pr.rate = {getattr(pr, 'rate', None)}, dr.default_rate = {dr.default_rate}")
+		    break
             except DefaultRoleRate.DoesNotExist:
                 board_valid = False
-                break
+                logger.debug(f"Board {board_id}: roles = {[r['id'] for r in roles]}")
+                logger.debug(f"  role {role_id}: pr.rate = {getattr(pr, 'rate', None)}, dr.default_rate = {dr.default_rate}")
+		break
     return board_valid, auto_used
 
 @login_required
