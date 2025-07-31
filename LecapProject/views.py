@@ -86,7 +86,7 @@ def check_board_rates(board, project_id, roles):
                     auto_used = True
                 else:
                     board_valid = False
-		    break
+                    break
             except DefaultRoleRate.DoesNotExist:
                 board_valid = False
                 break
