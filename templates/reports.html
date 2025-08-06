@@ -14,7 +14,7 @@
       <option value="">-- Выберите пространство --</option>
       {% for p in projects %}
         <option value="{{ p.id }}"
-                {% if p.id|stringformat:"s" == selected_project_id %}selected{% endif %}></option>
+                {% if p.id|stringformat:"s" == selected_project_id %}selected{% endif %}>
           {{ p.title }}
         </option>
       {% endfor %}
