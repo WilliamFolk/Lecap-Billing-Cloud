@@ -15,13 +15,12 @@
       {% for p in projects %}
         <option value="{{ p.id }}"
                 {% if p.id|stringformat:"s" == selected_project_id %}selected{% endif %}
-                {% if not p.has_rates %}disabled class="text-muted"{% endif %}>
           {{ p.title }}
         </option>
       {% endfor %}
     </select>
   </div>
-
+  <!-- {% if not p.has_rates %}disabled class="text-muted"{% endif %}> -->
   <!-- Board / Доска -->
   <div class="mb-3">
     <label for="board" class="form-label">Доска:</label>
