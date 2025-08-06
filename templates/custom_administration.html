@@ -8,7 +8,7 @@
   </style>
 </head>
 
-<h1 class="mb-4">Кастомное администрирование</h1>
+<h1 class="mb-4">Администрирование веб-приложения </h1>
 
 <!-- 1. Глобальные настройки -->
 <hr>
@@ -20,12 +20,16 @@
     {% render_field settings_form.url_domain_value_id class="form-control w-50" placeholder="mycompany" %}
   </div>
   <div class="mb-3 d-flex align-items-center">
-    <label class="form-label me-3" style="width: 270px;">ID кастомного поля Billing</label>
+    <label class="form-label me-3" style="width: 270px;">ID кастомного поля «Billing»</label>
     {% render_field settings_form.billing_custom_field_id class="form-control w-50" placeholder="123456" %}
   </div>
   <div class="mb-3 d-flex align-items-center">
-    <label class="form-label me-3" style="width: 270px;">ID значения поля Billing</label>
+    <label class="form-label me-3" style="width: 270px;">ID значения поля «Billing»</label>
     {% render_field settings_form.billing_custom_field_value_id class="form-control w-50" placeholder="123456" %}
+  </div>
+  <div class="mb-3 d-flex align-items-center">
+    <label class="form-label me-3" style="width: 270px;">ID кастомного поля «Проект»</label>
+    {% render_field settings_form.project_custom_field_id class="form-control w-50" placeholder="123456" %}
   </div>
   <div class="mb-3 d-flex align-items-center">
     <label class="form-label me-3" style="width: 270px;">Ключ API Kaiten</label>

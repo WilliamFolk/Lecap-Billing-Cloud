@@ -13,6 +13,7 @@ class AdminSettingsForm(forms.ModelForm):
             'billing_custom_field_id',
             'billing_custom_field_value_id',
             'api_auth_key',
+            'project_custom_field_id',
         ]
 
 class CustomUserForm(forms.ModelForm):

@@ -14,3 +14,7 @@ class TemplateFile(models.Model):
 
     def __str__(self):
         return self.file.name
+    
+    @property
+    def filename(self):
+        return os.path.basename(self.file.name)

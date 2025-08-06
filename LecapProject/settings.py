@@ -57,16 +57,20 @@ LOGGING = {
 # SECRET_KEY = 'django-insecure-7-=c&xq%sv4nox#4)u_(w@z%zhk8$m09*l7xn##-%%b645ous2'
 SECRET_KEY = os.environ.get('SECRET_KEY', 'fallback-secret-key')
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False # Hurray!
+DEBUG = True # Hurray!
 
 ALLOWED_HOSTS = [
     'billing.lecap.ru',    
     'www.billing.lecap.ru',
+    '127.0.0.1',
+    'localhost',
 ]
 
 # Доверённый origin для CSRF
 CSRF_TRUSTED_ORIGINS = [
     'https://billing.lecap.ru',
+    'http://127.0.0.1:8000',
+    'http://localhost:8000',
 ]
 
 LOGIN_URL = '/accounts/login/'
@@ -175,3 +179,8 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# williamfolk
+# 446191
+# 235241
+# f1fc375e-639a-4620-a134-9d5ce49da0d9

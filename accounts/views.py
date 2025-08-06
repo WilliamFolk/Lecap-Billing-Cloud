@@ -22,7 +22,7 @@ def edit_user(request, user_id):
                 messages.error(request, "Вы не можете снять с себя права администратора.")
             else:
                 form.save()
-                # Если админ сменил себе пароль — обновляем сессию, чтобы он не вышел
+                # Если админ сменил себе пароль — обновляет сессию, чтобы он не вышел
                 if form.cleaned_data.get('password') and request.user == user_instance:
                     update_session_auth_hash(request, user_instance)
                 messages.success(request, "Пользователь успешно обновлен.")

@@ -14,7 +14,7 @@ def fetch_kaiten_boards(domain, bearer_key, space_id):
     }
     logger.debug(f"Запрос досок: url={url}, для пространства {space_id}")
     try:
-         response = requests.get(url, headers=headers, timeout=10)
+         response = requests.get(url, headers=headers, timeout=60)
          response.raise_for_status()
          boards = response.json()
          logger.info(f"Получено досок: {len(boards)} для пространства {space_id}")
@@ -79,7 +79,7 @@ def fetch_kaiten_time_logs(domain, bearer_key, card_id):
     }
     logger.debug(f"Запрос списаний времени: url={url}, headers={headers}")
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=60)
         response.raise_for_status()
         time_logs = response.json()
         logger.info(f"Получено списаний времени для карточки {card_id}: {len(time_logs)}")
@@ -99,7 +99,7 @@ def fetch_kaiten_roles(domain, bearer_key):
     }
     logger.debug(f"Запрос ролей: url={url}, headers={headers}")
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=60)
         response.raise_for_status()
         roles = response.json()
         logger.debug(f"Ответ API по ролям: {roles}")
@@ -125,7 +125,7 @@ def fetch_kaiten_projects(domain, bearer_key):
     }
     logger.debug(f"Запрос проектов: url={url}, headers={headers}")
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=60)
         response.raise_for_status()
         data = response.json()
         projects = [{"id": project.get("id"), "title": project.get("title")} for project in data]
@@ -171,3 +171,69 @@ def fetch_kaiten_board_roles(domain, bearer_key, space_id, board_id):
     except Exception as e:
         logger.error(f"Ошибка при получении ролей доски {board_id}: {e}", exc_info=True)
         return []
+    
+def fetch_kaiten_custom_property_values(domain, bearer_key, space_id, property_id):
+    """
+    Получение списка значений select-поля custom_property по его ID в контексте space_id.
+    """
+    url = f"https://{domain}.kaiten.ru/api/latest/company/custom-properties/{property_id}/select-values"
+    headers = {
+        "Authorization": f"Bearer {bearer_key}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        resp.raise_for_status()
+        return [
+            {"id": str(item["id"]), "name": item.get("value", "")}
+            for item in resp.json()
+            if not item.get("deleted", False)
+        ]
+    except Exception as e:
+        logger.error(f"Ошибка fetch_custom_property_values: {e}", exc_info=True)
+        return []
+
+def fetch_kaiten_board_statuses(domain, bearer_key, space_id, board_id):
+    """
+    Получение списка статусов (колонок) доски.
+    """
+    url = f"https://{domain}.kaiten.ru/api/latest/boards/{board_id}/columns"
+    headers = {
+        "Authorization": f"Bearer {bearer_key}",
+        "Accept": "application/json",
+    }
+    resp = requests.get(url, headers=headers, timeout=10)
+    resp.raise_for_status()
+    data = resp.json()
+    # Преобразуем: id и название
+    data = resp.json()
+    # Преобразуем: id и название — в Kaiten в колонках поле называется "name"
+    return [
+        {
+            "id":   str(col["id"]),
+            "title": col.get("name") or col.get("title","")
+        }
+        for col in data
+    ]
+
+def fetch_kaiten_swimlanes(domain, bearer_key, board_id):
+    """
+    Получение списка swimlane’ов (дорожек) доски по endpoint /boards/{board_id}/lanes.
+    """
+    url = f"https://{domain}.kaiten.ru/api/latest/boards/{board_id}/lanes"
+    headers = {
+        "Authorization": f"Bearer {bearer_key}",
+        "Accept": "application/json",
+    }
+    resp = requests.get(url, headers=headers, timeout=10)
+    resp.raise_for_status()
+    data = resp.json()
+    # Преобразуем: id и название. В API для lanes поле может быть "title" или "name"
+    lanes = []
+    for lane in data:
+        lanes.append({
+            "id": str(lane["id"]),
+            "title": lane.get("title") or lane.get("name", ""),
+        })
+    return lanes

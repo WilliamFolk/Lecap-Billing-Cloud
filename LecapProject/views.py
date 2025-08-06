@@ -23,7 +23,8 @@ from docxTemplate.views import insert_table_after, set_table_borders, insert_par
 from django.forms import ModelForm, HiddenInput
 from .models import ProjectRate
 from .forms import DefaultRoleRateFormSet
-
+from django.views.decorators.http import require_GET
+from accounts.models import AdminSettings
 from docx.shared import Inches, Pt
 from django.db.models.functions import Cast
 from django.db.models import CharField
@@ -32,10 +33,19 @@ from docx.enum.table import WD_ALIGN_VERTICAL
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from .kaiten_api import fetch_kaiten_roles, fetch_kaiten_users
 from django.urls import reverse
+from .kaiten_api import (
+    fetch_kaiten_roles, fetch_kaiten_projects, fetch_kaiten_boards, fetch_kaiten_board_roles,
+    fetch_kaiten_custom_property_values, fetch_kaiten_swimlanes, fetch_kaiten_board_statuses,
+    fetch_kaiten_cards, fetch_kaiten_time_logs
+)
+from django.views.decorators.http import require_GET
 
 logger = logging.getLogger('kaiten')
-
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 User = get_user_model()
+
+
 
 @login_required
 def templates_view(request):
@@ -48,6 +58,51 @@ def administration_view(request):
         return redirect('admin:index')"""
     # Иначе можно отобразить кастомную страницу редактирования пользователей
     return render(request, 'custom_administration.html')
+
+@require_GET
+@login_required
+def get_custom_field_values(request):
+    admin_settings, _ = AdminSettings.objects.get_or_create(pk=1)
+    domain     = admin_settings.url_domain_value_id
+    bearer_key = admin_settings.api_auth_key
+
+    field_id = request.GET.get('field_id')
+    space_id = request.GET.get('space_id')
+    print(f"[DEBUG] AJAX get_custom_field_values → space_id={space_id!r}, field_id={field_id!r}")
+
+    values = fetch_kaiten_custom_property_values(domain, bearer_key, space_id, field_id)
+    print(f"[DEBUG] AJAX custom_values returned → {values!r}")
+    return JsonResponse({'values': values})
+
+@require_GET
+@login_required
+def get_statuses(request):
+    admin_settings, _ = AdminSettings.objects.get_or_create(pk=1)
+    domain     = admin_settings.url_domain_value_id
+    bearer_key = admin_settings.api_auth_key
+
+    space_id = request.GET.get("space_id")
+    board_id = request.GET.get("board_id")
+
+    statuses = fetch_kaiten_board_statuses(domain, bearer_key, space_id, board_id)
+    return JsonResponse({"statuses": statuses})
+
+@require_GET
+@login_required
+def get_swimlanes(request):
+    """
+    Возвращает JSON {"lanes": […]} по board_id
+    """
+    admin_settings, _ = AdminSettings.objects.get_or_create(pk=1)
+    domain     = admin_settings.url_domain_value_id
+    bearer_key = admin_settings.api_auth_key
+
+    board_id = request.GET.get('board_id')
+    print(f"[DEBUG] AJAX get_swimlanes → board_id={board_id!r}")
+    lanes = fetch_kaiten_swimlanes(domain, bearer_key, board_id)
+    print(f"[DEBUG] AJAX swimlanes returned → {lanes!r}")
+    return JsonResponse({"lanes": lanes})
+
 
 def check_board_rates(board, project_id, roles):
     """
@@ -108,11 +163,13 @@ def get_boards(request):
     if for_report:
         global_roles = fetch_kaiten_roles(domain, bearer_key)
         for role in global_roles:
-            DefaultRoleRate.objects.get_or_create(
+            DefaultRoleRate.objects.update_or_create(
                 role_id=str(role.get('id')),
                 defaults={'role_name': role.get('name')}
             )
-
+        # Удалить устаревшие роли
+        api_role_ids = [str(r.get('id')) for r in global_roles]
+        DefaultRoleRate.objects.exclude(role_id__in=api_role_ids).delete()
         for board in boards:
             board_roles = fetch_kaiten_board_roles(domain, bearer_key, space_id, board['id'])
             if not board_roles:
@@ -130,7 +187,7 @@ def get_boards(request):
 
 @login_required
 def rates_view(request):
-    admin_settings, _ = AdminSettings.objects.get_or_create(pk=1)
+    admin_settings, _ = AdminSettings.objects.update_or_create(pk=1)
     domain = admin_settings.url_domain_value_id
     bearer_key = admin_settings.api_auth_key
     kaiten_api_down = False
@@ -178,11 +235,12 @@ def rates_view(request):
                     role_id=role_id,
                     defaults={'role_name': role_name}
                 )
-                DefaultRoleRate.objects.get_or_create(
+                DefaultRoleRate.objects.update_or_create(
                     role_id=role_id,
                     defaults={'role_name': role_name}
                 )
-            #DefaultRoleRate.objects.exclude(role_id__in=api_role_ids).delete()
+            api_role_ids = [str(r.get('id')) for r in global_roles]
+            DefaultRoleRate.objects.exclude(role_id__in=api_role_ids).delete()
 
     ProjectRateFormSet = modelformset_factory(ProjectRate, form=ProjectRateForm, extra=0)
     rates_formset = None
@@ -335,6 +393,14 @@ def custom_administration(request):
         admin_settings.url_domain_value_id,
         admin_settings.api_auth_key
     )
+    for role in kaiten_roles:
+        DefaultRoleRate.objects.update_or_create(
+            role_id=str(role.get('id')),
+            defaults={'role_name': role.get('name')}
+        )
+    # удалить устаревшие
+    api_ids = [str(r.get('id')) for r in kaiten_roles]
+    DefaultRoleRate.objects.exclude(role_id__in=api_ids).delete()
     kaiten_users = fetch_kaiten_users(
         admin_settings.url_domain_value_id,
         admin_settings.api_auth_key
@@ -343,6 +409,7 @@ def custom_administration(request):
         o.kaiten_user_id: o.override_role_id
         for o in KaitenUserRoleOverride.objects.all()
     }
+    
     settings_form = AdminSettingsForm(instance=admin_settings)
     user_form = CustomUserForm()
     
@@ -410,15 +477,18 @@ def custom_administration(request):
     }
     return render(request, 'custom_administration.html', context)
 
-
+import json
 @login_required
 def reports_view(request):
-    kaiten_api_down = False
+    # 1. Настройки
     admin_settings, _ = AdminSettings.objects.get_or_create(pk=1)
-    domain = admin_settings.url_domain_value_id
-    bearer_key = admin_settings.api_auth_key
+    domain           = admin_settings.url_domain_value_id
+    bearer_key       = admin_settings.api_auth_key
+    project_field_id = admin_settings.project_custom_field_id
 
-    projects = fetch_kaiten_projects(domain, bearer_key)
+    # 2. Подгрузка space и проверка ставок
+    projects        = fetch_kaiten_projects(domain, bearer_key)
+    kaiten_api_down = False
     if not projects:
         kaiten_api_down = True
     else:
@@ -427,65 +497,137 @@ def reports_view(request):
             kaiten_api_down = True
         else:
             for role in roles:
-                DefaultRoleRate.objects.get_or_create(
-                    role_id=str(role.get('id')),
-                    defaults={'role_name': role.get('name')}
+                DefaultRoleRate.objects.update_or_create(
+                    role_id=str(role['id']),
+                    defaults={'role_name': role['name']}
                 )
             for project in projects:
-                pid = str(project.get('id'))
+                pid    = str(project['id'])
                 boards = fetch_kaiten_boards(domain, bearer_key, pid)
-                valid = False
+                valid  = False
                 for board in boards:
-                    board_roles = fetch_kaiten_board_roles(domain, bearer_key, pid, str(board['id']))
-                    board_valid, _ = check_board_rates(board, pid, board_roles)
-                    if board_valid:
+                    board_roles = fetch_kaiten_board_roles(
+                        domain, bearer_key, pid, str(board['id'])
+                    )
+                    ok, _ = check_board_rates(board, pid, board_roles)
+                    if ok:
                         valid = True
                         break
                 project['has_rates'] = valid
 
-    today = datetime.now(pytz.timezone('Europe/Moscow')).strftime('%Y-%m-%d')
-
-    if request.method == "POST":
-        project_id = request.POST.get('project')
-        board_id = request.POST.get('board')
+    # 3. Обработка формы
+    if request.method == 'POST':
+        proj_id     = request.POST.get('project')
+        board_id    = request.POST.get('board')
         template_id = request.POST.get('template')
-        start_date = request.POST.get('start_date')
-        end_date = request.POST.get('end_date')
-        selected_project = next((p for p in projects if str(p.get('id')) == project_id), None)
+        start_date  = request.POST.get('start_date')
+        end_date    = request.POST.get('end_date')
+        custom_proj = request.POST.get('custom_project', 'all')
+        swimlane    = request.POST.get('swimlane', '')
 
-        if selected_project and selected_project.get('has_rates') and board_id and template_id and start_date and end_date:
+        selected_proj = next((p for p in projects if str(p['id']) == proj_id), None)
+        if selected_proj and selected_proj.get('has_rates') \
+           and board_id and template_id and start_date and end_date:
             try:
-                template_instance = TemplateFile.objects.get(id=template_id)
+                tpl = TemplateFile.objects.get(id=template_id)
             except TemplateFile.DoesNotExist:
-                messages.error(request, "Выбран некорректный шаблон.")
+                messages.error(request, 'Выбран некорректный шаблон.')
                 return redirect('reports')
-            return generate_report(request, selected_project, template_instance, start_date, end_date, board_id)
+            return generate_report(
+                request, selected_proj, tpl,
+                start_date, end_date,
+                board_id, custom_proj, swimlane
+            )
 
-        if not selected_project or not selected_project.get('has_rates'):
-            messages.error(request, "Выбран некорректный проект или для проекта не заданы ставки ни для одной доски.")
+        # ошибки валидации
+        if not selected_proj or not selected_proj.get('has_rates'):
+            messages.error(request, 'Неподходящий проект или нет ставок.')
         elif not board_id:
-            messages.error(request, "Выберите доску.")
+            messages.error(request, 'Выберите доску.')
         elif not template_id:
-            messages.error(request, "Выберите шаблон.")
-        elif not start_date or not end_date:
-            messages.error(request, "Выберите начальную и конечную дату.")
+            messages.error(request, 'Выберите шаблон.')
+        else:
+            messages.error(request, 'Укажите период дат.')
 
+    # 4. Ошибка Kaiten
     if kaiten_api_down:
-        messages.error(request, "Сервер Kaitен недоступен. Пожалуйста, повторите попытку позже.")
+        messages.error(request, 'Сервер Kaiten недоступен, повторите позже.')
 
-    context = {
-        'projects': projects,
-        'templates': TemplateFile.objects.all(),
-        'today': today,
+    # 5. Рендеринг
+    today      = datetime.now(pytz.timezone('Europe/Moscow')).strftime('%Y-%m-%d')
+    ajax_urls  = {
+        'boards':        reverse('get_boards')      + '?for_report=1',
+        'custom_values': reverse('get_custom_field_values'),
+        'statuses':      reverse('get_statuses'),
+        'swimlanes':     reverse('get_swimlanes'),
+    }
+    templates_qs = TemplateFile.objects.all()
+    print(f"[reports_view] templates count={templates_qs.count()}, "
+                 f"list={[t.file.name for t in templates_qs]}")
+    context    = {
+        'ajax_urls_json': json.dumps(ajax_urls),
+        'projects':               projects,
+        'spaces':                 projects,
+        'templates':              templates_qs,
+        'today':                  today,
+        'project_field_id':       project_field_id,
+        'ajax_urls_json':         json.dumps(ajax_urls),
+        'selected_project_id':    request.POST.get('project', ''),
+        'selected_board_id':      request.POST.get('board',   ''),
+        'selected_custom_project':request.POST.get('custom_project', 'all'),
+        'selected_swimlane':      request.POST.get('swimlane',       ''),
+        'selected_status':      request.POST.get('status', ''),
+        'selected_template_id':   request.POST.get('template',      ''),
+        'selected_start_date':    request.POST.get('start_date',    today),
+        'selected_end_date':      request.POST.get('end_date',      today),
     }
     return render(request, 'reports.html', context)
 
+def fetch_all_kaiten_cards(domain, bearer_key, space_id):
+    url = f"https://{domain}.kaiten.ru/api/latest/cards"
+    params = {"space_id": space_id, "offset": 0, "limit": 1000}
+    headers = {
+        "Authorization": f"Bearer {bearer_key}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    return requests.get(
+        url,
+        headers=headers,
+        params=params,
+        timeout=80
+    ).json()
+
+def get_custom_prop(card, prop_id):
+    # card["custom_properties"] — список {id, value}
+    for cp in card.get("custom_properties", []):
+        if str(cp.get("id")) == str(prop_id):
+            return str(cp.get("value") or "")
+    return None
+
+def clear_cell_margins(cell):
+    """
+    Обнуляет внутренние отступы (padding) у ячейки Word-таблицы.
+    """
+    tc   = cell._tc
+    tcPr = tc.get_or_add_tcPr()
+    tcMar = OxmlElement('w:tcMar')
+    for tag in ('top','start','bottom','end'):
+        el = OxmlElement(f'w:{tag}')
+        el.set(qn('w:w'), '0')
+        el.set(qn('w:type'), 'dxa')
+        tcMar.append(el)
+    tcPr.append(tcMar)
+
 @login_required
-def generate_report(request, project, template_instance, start_date, end_date, board_id):
+def generate_report(request, project, template_instance, start_date, end_date, board_id, custom_proj, swimlane):
     logger.debug("=== START generate_report ===")
 
     # 1. Настройки и авторизация
     admin_settings, _ = AdminSettings.objects.get_or_create(pk=1)
+    if not admin_settings.project_custom_field_id:
+        messages.error(request, "Не задано кастомное поле «Проект» в настройках.")
+        return redirect('reports')
     domain     = admin_settings.url_domain_value_id
     bearer_key = admin_settings.api_auth_key
 
@@ -494,11 +636,10 @@ def generate_report(request, project, template_instance, start_date, end_date, b
         project_id    = str(project.get('id', ''))
         project_title = project.get('title', '')
     else:
-        # в случае передачи просто ID проекта
-        all_projects   = fetch_kaiten_projects(domain, bearer_key)
-        proj_dict      = next((p for p in all_projects if str(p.get('id')) == str(project)), {})
-        project_id     = str(proj_dict.get('id', ''))
-        project_title  = proj_dict.get('title', '')
+        all_projects = fetch_kaiten_projects(domain, bearer_key)
+        proj_dict    = next((p for p in all_projects if str(p.get('id')) == str(project)), {})
+        project_id   = str(proj_dict.get('id', ''))
+        project_title= proj_dict.get('title', '')
 
     # 3. Определение board_id и board_title
     boards     = fetch_kaiten_boards(domain, bearer_key, project_id)
@@ -506,27 +647,55 @@ def generate_report(request, project, template_instance, start_date, end_date, b
     board_id    = str(board_dict.get('id', board_id))
     board_title = board_dict.get('title', '')
 
-    # 4. Загружаем overrides из KaitenUserRoleOverride
+    # 4. Подготовка overrides и ролей
     overrides = {
         str(o.kaiten_user_id): o.override_role_id
         for o in KaitenUserRoleOverride.objects.all()
     }
     logger.debug(f"[DEBUG] overrides: {overrides}")
-
-    # 5. Загружаем глобальные роли (для имен)
     roles_list = fetch_kaiten_roles(domain, bearer_key)
     roles_map  = { str(r.get('id')): r.get('name') for r in roles_list }
 
-    # 6. Фетчим карточки и строим таблицу
-    # (billing_field_id и billing_field_value должны быть доступны в admin_settings)
-    cards = fetch_kaiten_cards(
-        domain,
-        bearer_key,
-        project_id,
-        admin_settings.billing_custom_field_id,
-        admin_settings.billing_custom_field_value_id
-    )
+    # 4.1. Получение членства пользователей, чтобы знать реальную роль
+    '''memberships = fetch_kaiten_memberships(domain, bearer_key, project_id, board_id)
+    member_roles = {
+        str(m.get('userId')): str(m.get('roleId'))
+        for m in memberships
+    } '''
+    # 5. Загрузка карточек: «Все» и «Не указано» → весь список, иначе — фильтр по кастомному полю
+    if custom_proj in ('all', ''):
+        cards = fetch_all_kaiten_cards(domain, bearer_key, project_id)
+    else:
+        cards = fetch_kaiten_cards(
+            domain, bearer_key,
+            project_id,
+            admin_settings.project_custom_field_id,
+            custom_proj
+        )
+    cards = [c for c in cards if str(c.get("board_id")) == board_id]
+    """
+    # 6. Фильтрация по кастомному полю «Проект»
+    if custom_proj == '':
+        # «Не указано» → оставляет только задачи без значения
+        cards = [
+            c for c in cards
+            if not get_custom_prop(c, admin_settings.project_custom_field_id)
+        ]
+    elif custom_proj not in ('all', None):
+        cards = [
+            c for c in cards
+            if get_custom_prop(c, admin_settings.project_custom_field_id) == custom_proj
+        ]"""
 
+    # 7. Фильтрация по swimlane и статусу
+    if swimlane and swimlane != 'all':
+        cards = [c for c in cards if str(c.get('lane_id', '')) == swimlane]  # 
+
+    status = request.POST.get('status', '')
+    if status and status != 'all':
+        cards = [c for c in cards if str(c.get('column_id', '')) == status]
+
+    # 8. Подготовка строк таблицы и подсчёт
     table_rows   = []
     total_time   = 0.0
     total_amount = 0.0
@@ -539,66 +708,74 @@ def generate_report(request, project, template_instance, start_date, end_date, b
         for log in logs:
             # Фильтр по дате
             created_iso = log.get('created', '')[:10]
-            if not(start_date <= created_iso <= end_date):
+            if not (start_date <= created_iso <= end_date):
                 continue
 
-            # Часы
             minutes = float(log.get('time_spent', 0) or 0)
             hours   = minutes / 60.0
             total_time += hours
 
-            # Автор и роль
-            author     = log.get('author', {})
-            author_id  = str(author.get('id', ''))
-            default_role_id = str(log.get('role_id', ''))
-            role_id    = overrides.get(author_id, default_role_id)
+            # 5.1. Определяет роль пользователя:
+            author_id = str(log.get('author', {}).get('id', ''))
+            # Определяет роль по логам времени:
+            # 1) если есть оверрайд — берёт его,
+            # 2) иначе — из вложенного поля 'role' в логе,
+            # 3) если всё ещё нет — показывает '—'.
+            author_id = str(log.get('author', {}).get('id', ''))
+            if author_id in overrides:
+                role_id = overrides[author_id]
+            else:
+                role_obj = log.get('role') or {}
+                role_id  = str(role_obj.get('id', '')) or None
+        
+            if not role_id:
+                role_name = '—'
+            else:
+                role_name = roles_map.get(role_id, '—')
 
-            # Ставка
+            # Правильный fallback: сначала кастомная ставка, если None → дефолт, иначе 0
             try:
-                pr   = ProjectRate.objects.get(
+                pr = ProjectRate.objects.get(
                     project_id=project_id,
                     board_id=board_id,
                     role_id=role_id
                 )
-                rate = pr.rate or 0
+                if pr.rate is not None:
+                    rate = pr.rate
+                else:
+                    dr = DefaultRoleRate.objects.filter(role_id=role_id).first()
+                    rate = dr.default_rate or 0 if dr else 0
             except ProjectRate.DoesNotExist:
-                dr   = DefaultRoleRate.objects.filter(role_id=role_id).first()
-                rate = dr.default_rate or 0 if dr else 0
+                dr = DefaultRoleRate.objects.filter(role_id=role_id).first()
+                rate = dr.default_rate or 0 if dr else 0  # 
+
             total_amount += rate * hours
-
-            # Получаем имя роли из Kaiten
             role_name = roles_map.get(role_id, '—')
+            date_str  = datetime.strptime(created_iso, '%Y-%m-%d').strftime('%d.%m.%Y')
 
-            # Форматируем строки
-            date_str = datetime.strptime(created_iso, '%Y-%m-%d').strftime('%d.%m.%Y')
             table_rows.append({
                 'date':       date_str,
-                'specialist': author.get('full_name') or author.get('name', '—'),
+                'specialist': log.get('author', {}).get('full_name') or log.get('author', {}).get('name', '—'),
                 'position':   role_name,
                 'rate':       f"{rate:.2f}".replace('.', ',') + ' ₽',
                 'work':       log.get('comment') or card_title,
                 'hours':      f"{hours:.2f}".replace('.', ','),
-                'cost':       f"{(rate*hours):.2f}".replace('.', ',') + ' ₽',
+                'cost':       f"{(rate * hours):.2f}".replace('.', ',') + ' ₽',
             })
 
-    # 7. Проверка наличия данных
     if not table_rows:
         messages.error(request, "Записей не найдено")
         return redirect('reports')
 
-    # 8. Сортировка
     table_rows.sort(key=lambda r: r['date'])
 
-    # 9. Итоги
     total_time_str   = f"{total_time:.2f} ч"
     total_amount_str = (
         f"{total_amount:.2f}".replace('.', ',') +
         ' ₽ (' + convert_number_to_text(total_amount) + ')'
     )
 
-    # 10. Генерация DOCX
     doc = Document(template_instance.file.path)
-    # Замена плейсхолдеров
     for p in doc.paragraphs:
         replace_placeholder_in_paragraph(p, '{project_title}', project_title)
         replace_placeholder_in_paragraph(p, '{board_title}', board_title)
@@ -607,7 +784,6 @@ def generate_report(request, project, template_instance, start_date, end_date, b
         replace_placeholder_in_paragraph(p, '{total_time_spent}',  total_time_str)
         replace_placeholder_in_paragraph(p, '{total_amount_spent}', total_amount_str)
 
-    # Вставка таблицы
     for p in doc.paragraphs:
         if '{table}' in p.text:
             before, after = p.text.split('{table}', 1)
@@ -633,21 +809,28 @@ def generate_report(request, project, template_instance, start_date, end_date, b
                 cells[6].text = row['cost'];       cells[6].width = Inches(1.5)
             break
 
-    # 11. Стилизация
     for i, row in enumerate(table.rows):
         for j, cell in enumerate(row.cells):
+            # 1) обнуляет padding ячейки
+            clear_cell_margins(cell)
+            # 2) прижимает текст вниз (как было у вас)
             cell.vertical_alignment = WD_ALIGN_VERTICAL.BOTTOM
+
             for para in cell.paragraphs:
+                # 3) точно слева
                 para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                # 4) обнуляет все indent только для параграфа в таблице
+                para.paragraph_format.left_indent      = Pt(0)
+                para.paragraph_format.first_line_indent = Pt(0)
                 para.paragraph_format.line_spacing = 1
                 para.paragraph_format.space_before = Pt(0)
-                para.paragraph_format.space_after = Pt(0)
+                para.paragraph_format.space_after  = Pt(0)
+
                 for run in para.runs:
                     run.font.size = Pt(11)
                     if i == 0 or j == 0:
                         run.font.bold = True
 
-    # 12. Отправка документа
     buffer = io.BytesIO()
     doc.save(buffer)
     buffer.seek(0)

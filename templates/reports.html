@@ -1,39 +1,72 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block content %}
-<p class="fs-1">Подготовка отчёта</p>
-<form method="post" id="reportForm">
+<h1>Генерация отчёта</h1>
+
+<form method="post" id="report-form">
   {% csrf_token %}
-  <!-- Выбор проекта -->
+
+  <!-- Space / Проект в Kaiten -->
   <div class="mb-3">
-    <label for="project" class="form-label">Выберите проект:</label>
-    <select name="project" id="project_id" class="form-select">
-      <option value="">-- Выберите проект --</option>
-      {% for project in projects %}
-        {% if project.has_rates %}
-          <option value="{{ project.id }}">{{ project.title }}</option>
-        {% else %}
-            <!-- <option value="{{ project.id }}" disabled class="text-muted" title="У проекта нет ни одной доски с указанными ставками"> -->
-            <option value="{{ project.id }}">{{ project.title }}</option>
-            {{ project.title }} (автоставки)
+    <label for="project" class="form-label">Пространство:</label>
+    <select name="project" id="project" class="form-select">
+      <option value="">-- Выберите пространство --</option>
+      {% for p in projects %}
+        <option value="{{ p.id }}"
+                {% if p.id|stringformat:"s" == selected_project_id %}selected{% endif %}
+                {% if not p.has_rates %}disabled class="text-muted"{% endif %}>
+          {{ p.title }}
         </option>
-        {% endif %}
       {% endfor %}
     </select>
   </div>
-  
-  <!-- Выбор доски -->
+
+  <!-- Board / Доска -->
   <div class="mb-3">
-    <label for="board" class="form-label">Выберите доску:</label>
+    <label for="board" class="form-label">Доска:</label>
     <select name="board" id="board" class="form-select">
-      <option value="">-- Сначала выберите проект --</option>
+      <option value="">-- Выберите доску --</option>
+      {# опции подгружаются через AJAX #}
     </select>
   </div>
-  <div class="alert alert-info" role="alert" style="border-radius: 0.25rem; background: linear-gradient(135deg, #f9f9f9, #ffffff); border: 1px solid #d1d1d1; padding: 20px;">
-    <p class="mb-2" style="color: #6c757d;">Если для выбранной доски не заданы ставки по каким-либо ролям, для которых существуют стандартные ставки, то вы увидете метку 
-      <span style="color: #007bff;">(автоставки)</span>.</p>
+
+  <!-- Проект (кастомное поле) -->
+  <div class="mb-3">
+    <label for="custom_project" class="form-label">Проект:</label>
+    <select id="custom-project-select" name="custom_project" class="form-select">
+      {# начальное содержимое будет перезаписано скриптом #}
+      <option value="all" style="font-weight:bold;">Все</option>
+      <option value=""  style="font-weight:bold;">Не указан</option>
+    </select>
   </div>
-  <!-- Выбор временного периода -->
+  <div class="alert alert-info d-flex align-items-center" role="alert"
+    style="border-radius: 0.25rem; background: linear-gradient(135deg, #f9f9f9, #ffffff);
+            border: 1px solid #d1d1d1; padding: 20px;">
+    <p class="mb-0" style="color: #6c757d;">
+      Выберите <strong>Не указан</strong>, чтобы отфильтровать только те задачи, которые не относятся ни к одному проекту
+    </p>
+  </div>
+
+  <!-- Дорожка (swimlane) -->
+  <div class="mb-3">
+    <label for="swimlane" class="form-label">Дорожка:</label>
+    <select name="swimlane" id="swimlane" class="form-select">
+      <option value="all" selected style="font-weight:bold;">Все</option>
+      {# остальные — через AJAX #}
+    </select>
+  </div>
+
+  <!-- Статус (колонка) -->
+  <div class="mb-3">
+    <label for="status" class="form-label">Статус:</label>
+    <select name="status" id="status" class="form-select">
+      <option value="all" style="font-weight:bold;">Все</option>
+      {# опции будут через AJAX #}
+    </select>
+  </div>
+
+    <!-- Выбор временного периода -->
   <div class="mb-3 d-flex align-items-center">
     <label for="start_date" class="form-label me-3 text-start" style="width: 120px;">Начальная дата</label>
     <div style="width: 130px;">
@@ -45,7 +78,7 @@
     <label for="end_date" class="form-label me-3 text-start" style="width: 120px;">Конечная дата</label>
     <div class="d-flex align-items-center" style="width: 130px;">
       <input type="date" name="end_date" id="end_date" class="form-control me-2" value="{{ today }}">
-      <button type="button" class="btn btn-outline-secondary btn-sm" id="setTodayButton">Сегодня</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="today-button">Сегодня</button>
     </div>
   </div>
   
@@ -53,94 +86,185 @@
     <span id="dateError" class="text-danger"></span>
   </div>
 
-  <!-- Выбор шаблона -->
+  <!-- Шаблон -->
   <div class="mb-3">
-    <label for="template" class="form-label">Выберите шаблон:</label>
+    <label for="template" class="form-label">Шаблон:</label>
     <select name="template" id="template" class="form-select">
       <option value="">-- Выберите шаблон --</option>
-      {% for tmpl in templates %}
-        <option value="{{ tmpl.id }}">{{ tmpl.file.name|cut:"docxTemplate/savedFiles/"|slice:":-5" }}</option>
+      {% for t in templates %}
+        <option value="{{ t.id }}"
+          {% if t.id|stringformat:"s" == selected_template_id %}selected{% endif %}>
+          {{ t.filename }}
+        </option>
       {% endfor %}
     </select>
   </div>
 
-  <button type="submit" class="btn btn-primary" id="prepareReportButton" disabled>Подготовить отчёт</button>
+  <!-- Кнопка -->
+    <div class="mt-4">
+      <button
+        type="submit"
+        id="generateReportButton"
+        class="btn btn-primary"
+        disabled
+      >
+        Сформировать отчёт
+      </button>
+    </div>
 </form>
 
-<script>
-  // Подгрузка списка досок при выборе проекта (для отчёта)
-  document.getElementById('project_id').addEventListener('change', function() {
-  const selectedProjectId = this.value;
-  fetch(`/get_boards/?space_id=${selectedProjectId}&for_report=1`)
-    .then(response => response.json())
-    .then(data => {
-      const boardSelect = document.getElementById('board');
-      boardSelect.innerHTML = '';
-      if (data.boards.length > 0) {
-        data.boards.forEach((board, index) => {
-          const option = document.createElement('option');
-          option.value = board.id;
-          let optionText = board.title;
-          if (!board.has_rates) {
-            optionText += " (нет ставок)";
-            option.disabled = true;
-          }
-          option.text = optionText;
-          if (index === 0 && board.has_rates) {
-            option.selected = true;
-          }
-          boardSelect.appendChild(option);
-        });
-      } else {
-        const option = document.createElement('option');
-        option.value = '';
-        option.text = '-- Нет досок --';
-        boardSelect.appendChild(option);
-      }
-      checkFormValidity();
-    });
-  });
+ <script>
+  document.addEventListener('DOMContentLoaded', () => {
+  const ajaxUrls  = JSON.parse('{{ ajax_urls_json|safe }}');
+  console.log('[DEBUG] ajaxUrls =', ajaxUrls);
+  const fieldId   = '{{ project_field_id }}';
+  const selSpace  = document.getElementById('project');
+  const selBoard  = document.getElementById('board');
+  const selCustom = document.getElementById('custom-project-select');
+  const selSwim   = document.getElementById('swimlane');
 
-  // Функция проверки заполненности формы и корректности дат
-  function checkFormValidity() {
-    const projectSelect = document.getElementById('project_id');
-    const startDateInput = document.getElementById('start_date');
-    const endDateInput = document.getElementById('end_date');
-    const templateSelect = document.getElementById('template');
-    const button = document.getElementById('prepareReportButton');
-    const dateError = document.getElementById('dateError');
-    let valid = true;
-    
-    dateError.textContent = '';
-
-    if (!projectSelect.value || !startDateInput.value || !endDateInput.value || !templateSelect.value) {
-      valid = false;
-    }
-    
-    if (startDateInput.value && endDateInput.value) {
-      const start = new Date(startDateInput.value);
-      const end = new Date(endDateInput.value);
-      if (start > end) {
-        dateError.textContent = "Начальная дата не может быть позже конечной.";
-        valid = false;
-      }
-    }
-    
-    button.disabled = !valid;
+  function reset(selectElem, html) {
+    selectElem.innerHTML = html;
   }
 
+  selSpace.addEventListener('change', () => {
+    const spaceId = selSpace.value;
 
-  document.getElementById('project_id').addEventListener('change', checkFormValidity);
-  document.getElementById('start_date').addEventListener('input', checkFormValidity);
-  document.getElementById('end_date').addEventListener('input', checkFormValidity);
-  document.getElementById('template').addEventListener('change', checkFormValidity);
+    // A) Загрузка досок
+    fetch(`${ajaxUrls.boards}&space_id=${spaceId}`)
+      .then(r => r.json())
+      .then(data => {
+        reset(selBoard, '<option value="">-- Выберите доску --</option>');
+        data.boards.forEach(b => {
+          const o = document.createElement('option');
+          o.value = b.id;
+          o.textContent = b.title;
+          selBoard.append(o);
+        });
+        selBoard.dispatchEvent(new Event('optionsLoaded'));
+        // очистка списка дорожек
+        reset(selSwim, '<option value="all" style="font-weight:bold;">Все</option>');
+      })
+      reset(selSwim, '<option value="all" style="font-weight:bold;">Все</option>');
 
-  document.getElementById('setTodayButton').addEventListener('click', function() {
-    const today = "{{ today }}";
-    document.getElementById('end_date').value = today;
-    checkFormValidity();
+      // B) Загрузка кастомного поля «Проект»
+    if (!spaceId) {
+      // без выбранного Space — только «Не указан»
+      reset(selCustom,
+        '<option value="" style="font-weight:bold;">Не указан</option>'
+      );
+    } else {
+      fetch(`${ajaxUrls.custom_values}?space_id=${spaceId}&field_id=${fieldId}`)
+        .then(r => r.json())
+        .then(data => {
+          selCustom.innerHTML = '';
+          if (data.values.length > 0) {
+            selCustom.insertAdjacentHTML('beforeend',
+              '<option value="all" style="font-weight:bold;">Все</option>'
+            );
+          }
+          selCustom.insertAdjacentHTML('beforeend',
+            '<option value="" style="font-weight:bold;">Не указан</option>'
+          );
+          data.values.forEach(v => {
+            const o = document.createElement('option');
+            o.value       = v.id;
+            o.textContent = v.name;
+            selCustom.append(o);
+          });
+        })
+        .catch(err => {
+          console.error('Ошибка загрузки проекта (кастомного поля):', err);
+          reset(selCustom,
+            '<option value="" style="font-weight:bold;">Не указан</option>'
+          );
+        });
+    }
   });
 
-  document.addEventListener('DOMContentLoaded', checkFormValidity);
+  selBoard.addEventListener('change', () => {
+    const boardId = selBoard.value;
+    console.log('[DEBUG] Fetching swimlanes from', ajaxUrls.swimlanes, 'board_id=', boardId);
+    fetch(`${ajaxUrls.swimlanes}?board_id=${boardId}`)
+      .then(r => r.json())
+      .then(data => {
+        console.log('[DEBUG] swimlanes response:', data);
+        reset(selSwim, '<option value="all" style="font-weight:bold;">Все</option>');
+        data.lanes.forEach(l => {
+          if (l.title && l.title.trim()) {
+            const o = document.createElement('option');
+            o.value       = l.id;
+            o.textContent = l.title;
+            selSwim.append(o);
+          }
+        });
+      })
+      .catch(err => {
+        console.error('Ошибка загрузки swimlanes:', err);
+        reset(selSwim, '<option value="all" style="font-weight:bold;">Все</option>');
+      });
+  });
+  const selStatus = document.getElementById('status');
+
+  selBoard.addEventListener('change', () => {
+    const spaceId = selSpace.value;
+    const boardId = selBoard.value;
+    fetch(`${ajaxUrls.statuses}?space_id=${spaceId}&board_id=${boardId}`)
+      .then(r => r.json())
+      .then(data => {
+        console.log('[DEBUG] statuses response:', data);
+        reset(selStatus, '<option value="all" style="font-weight:bold;">Все</option>');
+        data.statuses.forEach(s => {
+          const o = document.createElement('option');
+          o.value       = s.id;
+          o.textContent = s.title;
+          selStatus.append(o);
+        });
+      })
+      .catch(err => {
+        console.error('Ошибка загрузки статусов:', err);
+        reset(selStatus, '<option value="all" style="font-weight:bold;">Все</option>');
+      });
+  });
+
+  if (selSpace.value) {
+    selSpace.dispatchEvent(new Event('change'));
+  }
+});
+document.addEventListener('DOMContentLoaded', () => {
+  const btn = document.getElementById('today-button');
+  const start = document.getElementById('start_date');
+  const end   = document.getElementById('end_date');
+
+  btn.addEventListener('click', () => {
+    const d = new Date().toISOString().slice(0,10);
+    start.value = d;
+    end.value   = d;
+  });
+});
+document.addEventListener('DOMContentLoaded', () => {
+    const reportBtn   = document.getElementById('generateReportButton');
+    const selProject  = document.getElementById('project');
+    const selBoard    = document.getElementById('board');
+    const selTemplate = document.getElementById('template');
+
+    function updateButtonState() {
+      // кнопка активна, когда у всех трёх селектов есть непустое value
+      reportBtn.disabled = !(
+        selProject.value &&
+        selBoard.value   &&
+        selTemplate.value
+      );
+    }
+
+    selProject.addEventListener('change', updateButtonState);
+    selBoard.addEventListener('change', updateButtonState);
+    selTemplate.addEventListener('change', updateButtonState);
+    // реакция на AJAX-обновление досок
+    selBoard.addEventListener('optionsLoaded', updateButtonState);
+
+    // инициално проверить (на случай возврата с ошибкой и уже выбранных полей)
+    updateButtonState();
+  });
 </script>
 {% endblock %}

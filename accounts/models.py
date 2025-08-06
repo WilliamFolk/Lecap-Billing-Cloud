@@ -43,6 +43,12 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         return " ".join(filter(None, [self.first_name, self.patronymic, self.last_name]))
     
 class AdminSettings(models.Model):
+    project_custom_field_id = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text='ID кастомного поля “Проект” из Kaiten'
+    )
     url_domain_value_id = models.CharField(
         max_length=100, 
         verbose_name="Доменное имя компании"
