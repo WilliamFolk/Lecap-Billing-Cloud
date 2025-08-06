@@ -64,6 +64,7 @@ ALLOWED_HOSTS = [
     'www.billing.lecap.ru',
     '127.0.0.1',
     'localhost',
+    '94.228.125.105',
 ]
 
 # Доверённый origin для CSRF

@@ -344,14 +344,20 @@ def save_rates(request, rates_formset, project_id, project_title, board_id, boar
     Если какие-либо ставки не заполнены или форма не валидна, возвращает redirect с сообщением об ошибке.
     """
     if rates_formset.is_valid():
-        all_filled = all(form.cleaned_data.get('rate') not in (None, '') for form in rates_formset)
-        if all_filled:
+        valid = True
+        for form in rates_formset:
+            rate = form.cleaned_data.get('rate')
+            if rate in (None, '') and not getattr(form, 'is_default', False):
+                valid = False
+                break
+
+        if valid:
             rates_formset.save()
             messages.success(request, "Ставки для проекта сохранены.")
         else:
             messages.error(request, "Заполните ставки для всех ролей перед сохранением.")
-    else:
-        messages.error(request, "Проверьте введённые данные.")
+            else:
+                messages.error(request, "Проверьте введённые данные.")
     
     params = {
         'project_id': project_id,
