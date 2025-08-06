@@ -356,8 +356,8 @@ def save_rates(request, rates_formset, project_id, project_title, board_id, boar
             messages.success(request, "Ставки для проекта сохранены.")
         else:
             messages.error(request, "Заполните ставки для всех ролей перед сохранением.")
-            else:
-                messages.error(request, "Проверьте введённые данные.")
+    else:
+        messages.error(request, "Проверьте введённые данные.")
     
     params = {
         'project_id': project_id,
