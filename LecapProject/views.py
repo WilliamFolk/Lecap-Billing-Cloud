@@ -395,22 +395,20 @@ def custom_administration(request):
         return redirect(request.META.get('HTTP_REFERER', 'rates'))
         
     admin_settings, _ = AdminSettings.objects.get_or_create(pk=1)
-    kaiten_roles = fetch_kaiten_roles(
-        admin_settings.url_domain_value_id,
-        admin_settings.api_auth_key
-    )
-    for role in kaiten_roles:
-        DefaultRoleRate.objects.update_or_create(
-            role_id=str(role.get('id')),
-            defaults={'role_name': role.get('name')}
-        )
-    # удалить устаревшие
-    api_ids = [str(r.get('id')) for r in kaiten_roles]
-    DefaultRoleRate.objects.exclude(role_id__in=api_ids).delete()
-    kaiten_users = fetch_kaiten_users(
-        admin_settings.url_domain_value_id,
-        admin_settings.api_auth_key
-    )
+    raw_domain = admin_settings.url_domain_value_id or ""
+    domain = raw_domain.strip().replace("http://", "").replace("https://", "").rstrip("/")
+    kaiten_roles = []
+    kaiten_users = []
+    if domain and admin_settings.api_auth_key:
+        kaiten_roles = fetch_kaiten_roles(domain, admin_settings.api_auth_key)
+        for role in kaiten_roles:
+            DefaultRoleRate.objects.update_or_create(
+                role_id=str(role.get('id')),
+                defaults={'role_name': role.get('name')}
+            )
+        api_ids = [str(r.get('id')) for r in kaiten_roles]
+        DefaultRoleRate.objects.exclude(role_id__in=api_ids).delete()
+        kaiten_users = fetch_kaiten_users(domain, admin_settings.api_auth_key)
     overrides = {
         o.kaiten_user_id: o.override_role_id
         for o in KaitenUserRoleOverride.objects.all()
