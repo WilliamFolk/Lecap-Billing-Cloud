@@ -10,3 +10,5 @@ __pycache__/
 media/
 
 docxTemplate/savedFiles/
+
+test_time_logs.py

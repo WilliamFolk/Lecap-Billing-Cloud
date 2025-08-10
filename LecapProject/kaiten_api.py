@@ -42,6 +42,7 @@ def fetch_kaiten_cards(domain, bearer_key, project_id, billing_field_id, billing
             }
         ]
     }
+    
     filter_str = json.dumps(filter_data)
     filter_encoded = base64.b64encode(filter_str.encode('utf-8')).decode('utf-8')
 
@@ -78,6 +79,7 @@ def fetch_kaiten_time_logs(domain, bearer_key, card_id):
         "Content-Type": "application/json",
     }
     logger.debug(f"Запрос списаний времени: url={url}, headers={headers}")
+    print(f"Запрос списаний времени: url={url}, headers={headers}")
     try:
         response = requests.get(url, headers=headers, timeout=60)
         response.raise_for_status()

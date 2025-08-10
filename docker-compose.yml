@@ -31,6 +31,6 @@ services:
       - "443:443"
       - "127.0.0.1:8000:8000"
     volumes:
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
+      # Для разработки используем конфиг без SSL
+      - ./nginx/default.dev.conf:/etc/nginx/conf.d/default.conf:ro
     restart: always
